@@ -18,7 +18,11 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
 // MongoDB Atlas connection
-const MONGODB_URI = process.env.MONGODB_URI;
+let MONGODB_URI = process.env.MONGODB_URI;
+if (MONGODB_URI) {
+  // Strip surrounding quotes or whitespace that might be pasted in Render dashboard
+  MONGODB_URI = MONGODB_URI.trim().replace(/^["']|["']$/g, '');
+}
 
 let isDbConnected = false;
 
