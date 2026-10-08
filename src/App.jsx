@@ -22,6 +22,13 @@ import PreventiveMaintenanceView from './components/PreventiveMaintenanceView';
 import PermitToWorkView from './components/PermitToWorkView';
 import PrintableJobCardModal from './components/PrintableJobCardModal';
 import WorkOrderDetailView from './components/WorkOrderDetailView';
+import { 
+  fetchCloudOrders, 
+  saveCloudOrder, 
+  fetchCloudNotifications, 
+  saveCloudNotification, 
+  resetCloudDatabase 
+} from './utils/apiSync';
 
 export default function App() {
   // Theme State (default light)
@@ -82,13 +89,46 @@ export default function App() {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
   };
 
-  // Save to localStorage
+  // 1. Initial Cloud Sync: Load from MongoDB Atlas on mount
+  useEffect(() => {
+    let isMounted = true;
+    const syncFromCloud = async () => {
+      try {
+        const [cloudOrders, cloudNotifs] = await Promise.all([
+          fetchCloudOrders(),
+          fetchCloudNotifications()
+        ]);
+        if (isMounted) {
+          if (Array.isArray(cloudOrders) && cloudOrders.length > 0) {
+            setOrders(cloudOrders);
+          }
+          if (Array.isArray(cloudNotifs) && cloudNotifs.length > 0) {
+            setNotifications(cloudNotifs);
+          }
+        }
+      } catch (err) {
+        // Fallback to local storage if offline
+      }
+    };
+    syncFromCloud();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. Save to localStorage & MongoDB Atlas
   useEffect(() => {
     localStorage.setItem('aamys_crm_orders', JSON.stringify(orders));
+    orders.forEach((order) => {
+      saveCloudOrder(order);
+    });
   }, [orders]);
 
   useEffect(() => {
     localStorage.setItem('aamys_crm_notifications', JSON.stringify(notifications));
+    notifications.forEach((notif) => {
+      saveCloudNotification(notif);
+    });
   }, [notifications]);
 
   useEffect(() => {
@@ -112,6 +152,7 @@ export default function App() {
       localStorage.removeItem('aamys_crm_notifications');
       localStorage.removeItem('aamys_pm_orders');
       localStorage.removeItem('aamys_pm_notifications');
+      resetCloudDatabase();
       showToast('All active data cleared. Backup is preserved in backup_data.txt', 'info');
     }
   };
