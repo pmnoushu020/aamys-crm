@@ -1,23 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
-  BellRing, 
-  PlusCircle, 
-  ArrowRight, 
-  ArrowLeft,
-  AlertTriangle, 
-  CheckCircle, 
-  CheckCircle2, 
-  Wrench, 
-  Clock, 
-  Search, 
-  Layers, 
+  Save, 
+  ArrowLeft, 
+  Check, 
   X, 
-  DollarSign, 
+  Printer, 
+  Search, 
+  Plus, 
+  Wrench, 
+  Phone, 
   FileText, 
+  CheckCircle, 
+  CheckCircle2,
+  AlertTriangle, 
+  Layers, 
   ShieldCheck, 
-  Trash2, 
+  ClipboardList, 
+  ExternalLink, 
+  Clock, 
   UserCheck, 
-  ClipboardList
+  RotateCcw, 
+  Edit3, 
+  MoreHorizontal, 
+  Info,
+  DollarSign,
+  Trash2,
+  List,
+  Monitor,
+  Building2,
+  Send
 } from 'lucide-react';
 import { 
   EQUIPMENT_LIST, 
@@ -34,139 +45,185 @@ import {
 export default function NotificationsView({ 
   notifications = [], 
   onConvertNotification, 
-  onAddNotification,
-  onUpdateNotification
+  onAddNotification, 
+  onUpdateNotification 
 }) {
-  // Navigation & Search State
+  // Primary view toggle: 'sap_gui' (matches user's screenshot) or 'list' (IW28 grid table)
+  const [viewMode, setViewMode] = useState('sap_gui');
+
+  // Currently selected notification or create mode
+  const [selectedNotifId, setSelectedNotifId] = useState(() => {
+    return notifications.length > 0 ? notifications[0].notificationNo : 'NEW';
+  });
+  const [isCreateMode, setIsCreateMode] = useState(false);
+
+  // Active SAP Tab (Screenshot tabs: Notification, Reference object, Malfunction, breakdown, Items, Tasks, Supervision)
+  const [activeSapTab, setActiveSapTab] = useState('notification');
+
+  // Search in list view
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all'); // all, breakdown, pending_supv, approved, order_assigned
+  const [activeFilter, setActiveFilter] = useState('all');
 
-  // Modals State
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedNotif, setSelectedNotif] = useState(null);
-  const [workbenchTab, setWorkbenchTab] = useState('overview'); // overview, catalog, tasks, supervision
+  // Command Prompt Input (e.g. "IW21", "IW22", "IW28")
+  const [commandText, setCommandText] = useState('IW21');
 
-  // =========================================================================
-  // IW21 Multi-Step Creation Wizard State
-  // Step 1: Header & Breakdown Info
-  // Step 2: Catalog Profile & Cost Entry
-  // Step 3: Notification Tasks
-  // Step 4: Supervision & Approval
-  // =========================================================================
-  const [wizardStep, setWizardStep] = useState(1);
-
-  // Step 1 Form Data
-  const [notifType, setNotifType] = useState('M2'); // M1, M2, M3
+  // Form State for Active Notification
+  const [notifNo, setNotifNo] = useState('%00000000001');
+  const [notifType, setNotifType] = useState('M1'); // M1: Maintenance Request, M2: Breakdown, M3: Activity
+  const [status, setStatus] = useState('OSNO');
+  const [orderId, setOrderId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [equipmentId, setEquipmentId] = useState('EQ-100421');
   const [functionalLocationId, setFunctionalLocationId] = useState('FL-100-PUMP-01');
+  const [assembly, setAssembly] = useState('Mechanical Seal Cartridge');
+  const [plannerGroup, setPlannerGroup] = useState('MECH');
+  const [mainWorkCtr, setMainWorkCtr] = useState('MECH_01');
+  const [reportedBy, setReportedBy] = useState('Wolfgang Meyer (Operator #441)');
+  const [reportedDate, setReportedDate] = useState(() => new Date().toISOString().replace('T', ' ').substring(0, 16));
   const [priority, setPriority] = useState('High');
-  const [reportedBy, setReportedBy] = useState('Wolfgang Meyer (Technician #441)');
-  const [breakdown, setBreakdown] = useState(true);
-  const [breakdownStart, setBreakdownStart] = useState(() => {
-    const now = new Date();
-    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-  });
-  const [breakdownPoint, setBreakdownPoint] = useState('Drive-End Mechanical Seal Gland & Bearing Pedestal');
 
-  // Step 2 Form Data (Catalog Profile & Items with Cost)
+  // Malfunction & Breakdown Data
+  const [breakdown, setBreakdown] = useState(true);
+  const [breakdownStart, setBreakdownStart] = useState(() => new Date().toISOString().slice(0, 16));
+  const [breakdownPoint, setBreakdownPoint] = useState('Drive-End Mechanical Seal Gland & Bearing Pedestal');
+  const [breakdownDurationHours, setBreakdownDurationHours] = useState(2.5);
+
+  // Catalog Profile & Items
   const [catalogProfileId, setCatalogProfileId] = useState('CP-PUMP');
-  const [items, setItems] = useState([
-    {
-      itemNo: '0010',
-      objectPartCode: 'B-PMP-01',
-      objectPartText: 'Mechanical Seal Cartridge',
-      damageCode: 'C-DMG-01',
-      damageText: 'Fluid / Slurry Leakage from Seal Gland',
-      causeCode: '5-CAU-01',
-      causeText: 'Particulate Ingress / Slurry Abrasion',
-      cost: 640.00,
-      notes: 'Slurry leakage observed during morning inspection'
-    }
-  ]);
-  // Temp inputs for adding item in Step 2
+  const [items, setItems] = useState([]);
   const [tempItemPart, setTempItemPart] = useState('');
   const [tempItemDamage, setTempItemDamage] = useState('');
   const [tempItemCause, setTempItemCause] = useState('');
   const [tempItemCost, setTempItemCost] = useState('');
   const [tempItemNotes, setTempItemNotes] = useState('');
 
-  // Step 3 Form Data (Tasks)
-  const [tasks, setTasks] = useState(() => [
-    {
-      taskNo: 'T01',
-      taskCode: 'T-PMP-01',
-      description: 'LOTO Isolation, pipe depressurization & chemical flush',
-      assignedTo: 'Hans Gruber (Technician #302)',
-      plannedStart: new Date().toISOString().slice(0, 10) + 'T09:00',
-      plannedFinish: new Date().toISOString().slice(0, 10) + 'T11:00',
-      status: 'Pending'
-    }
-  ]);
-  // Temp inputs for adding task in Step 3
+  // Tasks
+  const [tasks, setTasks] = useState([]);
   const [tempTaskCode, setTempTaskCode] = useState('');
   const [tempTaskDesc, setTempTaskDesc] = useState('');
-  const [tempTaskAssignee, setTempTaskAssignee] = useState('Hans Gruber (Technician #302)');
+  const [tempTaskAssignee, setTempTaskAssignee] = useState('Hans Gruber');
   const [tempTaskFinish, setTempTaskFinish] = useState('');
 
-  // Step 4 Form Data (Supervision)
+  // Supervision
   const [supervisorName, setSupervisorName] = useState('Dieter Braun (Maintenance Supervisor)');
   const [supervisorDecision, setSupervisorDecision] = useState('Approved & Released for Work Order');
-  const [supervisorComments, setSupervisorComments] = useState('Technical failure assessment verified. Estimated costs approved for scheduled repair.');
+  const [supervisorComments, setSupervisorComments] = useState('Defect verified. Authorized for Work Order conversion.');
+  const [isSupervised, setIsSupervised] = useState(false);
 
-  // Inline forms for Workbench modal (IW22)
-  const [wbItemPart, setWbItemPart] = useState('');
-  const [wbItemDamage, setWbItemDamage] = useState('');
-  const [wbItemCause, setWbItemCause] = useState('');
-  const [wbItemCost, setWbItemCost] = useState('');
-  const [wbItemNotes, setWbItemNotes] = useState('');
+  // Notification saved feedback toast
+  const [actionNotice, setActionNotice] = useState(null);
 
-  const [wbTaskCode, setWbTaskCode] = useState('');
-  const [wbTaskDesc, setWbTaskDesc] = useState('');
-  const [wbTaskAssignee, setWbTaskAssignee] = useState('Alex Brandt (Lead Engineer)');
-  const [wbTaskFinish, setWbTaskFinish] = useState('');
+  // Sync form when selectedNotifId changes
+  useEffect(() => {
+    if (selectedNotifId === 'NEW') {
+      enterCreateMode();
+    } else {
+      const found = notifications.find((n) => n.notificationNo === selectedNotifId);
+      if (found) {
+        loadNotificationIntoForm(found);
+      }
+    }
+  }, [selectedNotifId, notifications]);
 
-  const [wbSupvName, setWbSupvName] = useState('Dieter Braun (Maintenance Supervisor)');
-  const [wbSupvDecision, setWbSupvDecision] = useState('Approved & Released for Work Order');
-  const [wbSupvComments, setWbSupvComments] = useState('Approved under Plant Maintenance Operational Budget.');
+  const loadNotificationIntoForm = (notif) => {
+    setIsCreateMode(false);
+    setNotifNo(notif.notificationNo);
+    setNotifType(notif.notificationType || notif.type || 'M1');
+    setStatus(notif.status || 'OSNO');
+    setOrderId(notif.orderId || '');
+    setTitle(notif.title || '');
+    setDescription(notif.description || '');
+    setEquipmentId(notif.equipmentId || 'EQ-100421');
+    setFunctionalLocationId(notif.functionalLocationId || 'FL-100-PUMP-01');
+    setAssembly(notif.assembly || 'Main Bearing & Seal Assembly');
+    setPlannerGroup(notif.plannerGroup || 'MECH');
+    setMainWorkCtr(notif.mainWorkCtr || 'MECH_01');
+    setReportedBy(notif.reportedBy || 'Wolfgang Meyer');
+    setReportedDate(notif.reportedDate || new Date().toISOString().replace('T', ' ').substring(0, 16));
+    setPriority(notif.priority || 'High');
+    setBreakdown(Boolean(notif.breakdown));
+    setBreakdownStart(notif.breakdownStart || new Date().toISOString().slice(0, 16));
+    setBreakdownPoint(notif.breakdownPoint || 'Drive-End Mechanical Seal Gland & Bearing Pedestal');
+    setBreakdownDurationHours(notif.breakdownDurationHours || 2.5);
+    setCatalogProfileId(notif.catalogProfileId || 'CP-PUMP');
+    setItems(Array.isArray(notif.items) ? notif.items : []);
+    setTasks(Array.isArray(notif.tasks) ? notif.tasks : []);
+    setIsSupervised(Boolean(notif.supervisorSignOff?.isSupervised || notif.status === 'APRV'));
+    setSupervisorName(notif.supervisorSignOff?.supervisorName || 'Dieter Braun (Maintenance Supervisor)');
+    setSupervisorDecision(notif.supervisorSignOff?.decision || 'Approved & Released for Work Order');
+    setSupervisorComments(notif.supervisorSignOff?.comments || 'Defect verified. Authorized for Work Order conversion.');
+    setCommandText('IW22');
+  };
 
-  // =========================================================================
-  // Equipment Selection & Auto-Fill
-  // =========================================================================
+  const enterCreateMode = () => {
+    setIsCreateMode(true);
+    setSelectedNotifId('NEW');
+    setNotifNo(`%${Math.floor(10000000000 + Math.random() * 90000000000)}`);
+    setNotifType('M1');
+    setStatus('OSNO');
+    setOrderId('');
+    setTitle('Check Motor & Mechanical Rotary Gland Leakage');
+    setDescription('Maintenance notification for testing purpose. Elevated vibration and slurry fluid weeping detected during morning shift inspection.');
+    setEquipmentId('EQ-100421');
+    setFunctionalLocationId('FL-100-PUMP-01');
+    setAssembly('Mechanical Seal Gland Housing');
+    setPlannerGroup('MECH');
+    setMainWorkCtr('MECH_01');
+    setReportedBy('Wolfgang Meyer (Operator #441)');
+    setReportedDate(new Date().toISOString().replace('T', ' ').substring(0, 16));
+    setPriority('High');
+    setBreakdown(true);
+    setBreakdownStart(new Date().toISOString().slice(0, 16));
+    setBreakdownPoint('Drive-End Mechanical Seal Gland & Bearing Pedestal');
+    setBreakdownDurationHours(2.5);
+    setCatalogProfileId('CP-PUMP');
+    setItems([
+      {
+        itemNo: '0010',
+        objectPartCode: 'B-PMP-01',
+        objectPartText: 'Mechanical Seal Cartridge',
+        damageCode: 'C-DMG-01',
+        damageText: 'Fluid / Slurry Leakage from Seal Gland',
+        causeCode: '5-CAU-01',
+        causeText: 'Particulate Ingress / Slurry Abrasion',
+        cost: 640.00,
+        notes: 'Abrasive particle ingress across primary dynamic sealing faces'
+      }
+    ]);
+    setTasks([
+      {
+        taskNo: 'T01',
+        taskCode: 'T-PMP-01',
+        description: 'LOTO Isolation, pipe depressurization & chemical flush',
+        assignedTo: 'Hans Gruber (Technician #302)',
+        plannedStart: new Date().toISOString().slice(0, 16),
+        plannedFinish: new Date(Date.now() + 86400000).toISOString().slice(0, 16),
+        status: 'Pending'
+      }
+    ]);
+    setIsSupervised(false);
+    setCommandText('IW21');
+    setActiveSapTab('notification');
+  };
+
+  const currentProfile = CATALOG_PROFILES.find((p) => p.id === catalogProfileId) || CATALOG_PROFILES[0];
+  const currentEquipment = EQUIPMENT_LIST.find((e) => e.id === equipmentId);
+  const currentFuncLoc = FUNCTIONAL_LOCATIONS.find((f) => f.id === functionalLocationId);
+
   const handleEquipmentSelect = (eqId) => {
     setEquipmentId(eqId);
     const eq = EQUIPMENT_LIST.find((e) => e.id === eqId);
     if (eq) {
-      if (eq.functionalLocationId) {
-        setFunctionalLocationId(eq.functionalLocationId);
-      }
-      if (eq.catalogProfileId) {
-        setCatalogProfileId(eq.catalogProfileId);
-        // Pre-fill sensible default breakdown point based on equipment category
-        if (eq.category?.includes('Rotary')) {
-          setBreakdownPoint('Drive-End Mechanical Seal Gland & Bearing Pedestal');
-        } else if (eq.category?.includes('Compressor')) {
-          setBreakdownPoint('Stage 2 Suction / Discharge Valve Pocket');
-        } else if (eq.category?.includes('Pressure')) {
-          setBreakdownPoint('Safety Relief Valve Nozzle & Superheater Flange');
-        } else if (eq.category?.includes('Switchgear')) {
-          setBreakdownPoint('Vacuum Interrupter Contact Gland & SF6 Manometer');
-        } else if (eq.category?.includes('Chiller')) {
-          setBreakdownPoint('Evaporator Refrigerant Expansion Valve (TXV)');
-        }
-      }
+      if (eq.functionalLocationId) setFunctionalLocationId(eq.functionalLocationId);
+      if (eq.catalogProfileId) setCatalogProfileId(eq.catalogProfileId);
+      if (eq.workCenterId) setMainWorkCtr(eq.workCenterId);
     }
   };
 
-  const currentProfile = CATALOG_PROFILES.find((p) => p.id === catalogProfileId) || CATALOG_PROFILES[0];
-
-  // =========================================================================
-  // Item Management (Step 2)
-  // =========================================================================
+  // Add Item
   const handleAddItem = () => {
     if (!tempItemCost && !tempItemPart && !tempItemDamage) return;
-
     const partObj = currentProfile.objectParts.find((p) => p.code === tempItemPart) || currentProfile.objectParts[0];
     const dmgObj = currentProfile.damageCodes.find((d) => d.code === tempItemDamage) || currentProfile.damageCodes[0];
     const cauObj = currentProfile.causeCodes.find((c) => c.code === tempItemCause) || currentProfile.causeCodes[0];
@@ -181,7 +238,7 @@ export default function NotificationsView({
       causeCode: cauObj.code,
       causeText: cauObj.text,
       cost: Number(tempItemCost) || 0,
-      notes: tempItemNotes.trim() || 'Defect noted by technician'
+      notes: tempItemNotes.trim() || 'Defect observed by technician'
     };
 
     setItems([...items, newItem]);
@@ -192,27 +249,18 @@ export default function NotificationsView({
     setTempItemNotes('');
   };
 
-  const handleRemoveItem = (itemNo) => {
-    setItems(items.filter((i) => i.itemNo !== itemNo));
-  };
-
-  const totalEstimatedCost = items.reduce((acc, cur) => acc + (Number(cur.cost) || 0), 0);
-
-  // =========================================================================
-  // Task Management (Step 3)
-  // =========================================================================
+  // Add Task
   const handleAddTask = () => {
     if (!tempTaskDesc.trim() && !tempTaskCode) return;
-
     const taskObj = currentProfile.taskCodes.find((t) => t.code === tempTaskCode);
-    const desc = tempTaskDesc.trim() || taskObj?.text || 'Standard Maintenance Task';
+    const desc = tempTaskDesc.trim() || taskObj?.text || 'Maintenance Task';
     const nextTaskNo = `T${String(tasks.length + 1).padStart(2, '0')}`;
 
     const newTask = {
       taskNo: nextTaskNo,
       taskCode: tempTaskCode || (taskObj?.code || 'T-GEN-01'),
       description: desc,
-      assignedTo: tempTaskAssignee.trim() || 'Unassigned Technician',
+      assignedTo: tempTaskAssignee.trim() || 'Technician',
       plannedStart: new Date().toISOString().slice(0, 16),
       plannedFinish: tempTaskFinish || new Date(Date.now() + 86400000).toISOString().slice(0, 16),
       status: 'Pending'
@@ -224,205 +272,126 @@ export default function NotificationsView({
     setTempTaskFinish('');
   };
 
-  const handleRemoveTask = (taskNo) => {
-    setTasks(tasks.filter((t) => t.taskNo !== taskNo));
-  };
+  const totalEstimatedCost = items.reduce((acc, cur) => acc + (Number(cur.cost) || 0), 0);
 
-  // =========================================================================
-  // Create Modal Submit (Technician Raise & Supervisor Sign-off)
-  // =========================================================================
-  const handleFinishIntake = (asSupervised = true, convertToOrder = false) => {
+  // Save / Post Notification (IW21 / IW22)
+  const handleSaveNotification = (newStatusOverride = null) => {
     if (!title.trim()) {
-      alert('Please provide a malfunction title.');
-      setWizardStep(1);
+      alert('Please enter a description for the notification.');
+      setActiveSapTab('notification');
       return;
     }
 
-    const notifNo = `NOTIF-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`;
-    const finalStatus = asSupervised ? 'APRV' : (items.length > 0 ? 'PNDG_SUPV' : 'OSNO');
+    const currentStatus = newStatusOverride || (isSupervised ? 'APRV' : status);
+    const assignedNo = isCreateMode
+      ? `NOTIF-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`
+      : notifNo;
 
-    const newNotif = {
-      notificationNo: notifNo,
+    const notifRecord = {
+      notificationNo: assignedNo,
       type: notifType,
       notificationType: notifType,
-      equipmentId: equipmentId || null,
-      functionalLocationId: functionalLocationId || null,
+      status: currentStatus,
+      orderId: orderId || null,
       title: title.trim(),
       description: description.trim() || title.trim(),
-      priority,
+      equipmentId: equipmentId || null,
+      functionalLocationId: functionalLocationId || null,
+      assembly: assembly.trim(),
+      plannerGroup: plannerGroup.trim(),
+      mainWorkCtr: mainWorkCtr.trim(),
       reportedBy: reportedBy.trim(),
-      reportedDate: new Date().toISOString().replace('T', ' ').substring(0, 16),
+      reportedDate: reportedDate,
+      priority,
       breakdown,
       breakdownStart: breakdown ? breakdownStart : null,
       breakdownPoint: breakdown ? breakdownPoint.trim() : null,
-      breakdownDurationHours: breakdown ? 2.5 : 0,
+      breakdownDurationHours: breakdown ? Number(breakdownDurationHours) : 0,
       catalogProfileId,
       items,
       totalEstimatedCost,
       tasks,
-      supervisorSignOff: asSupervised ? {
-        isSupervised: true,
-        supervisorName: supervisorName.trim() || 'Plant Supervisor',
+      supervisorSignOff: {
+        isSupervised,
+        supervisorName: supervisorName.trim(),
         decision: supervisorDecision,
-        signedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        signedAt: isSupervised ? new Date().toISOString().replace('T', ' ').substring(0, 16) : null,
         comments: supervisorComments.trim()
-      } : {
-        isSupervised: false,
-        supervisorName: '',
-        decision: 'Pending Supervisor Review',
-        signedAt: null,
-        comments: ''
-      },
-      status: finalStatus,
-      orderId: null
+      }
     };
 
-    onAddNotification(newNotif);
-    setShowCreateModal(false);
-    resetWizardForm();
-
-    if (convertToOrder && onConvertNotification) {
-      onConvertNotification(newNotif);
+    if (isCreateMode) {
+      onAddNotification(notifRecord);
+      setSelectedNotifId(assignedNo);
+      setIsCreateMode(false);
+      showNotice(`Notification ${assignedNo} created successfully (IW21)!`);
+    } else {
+      if (onUpdateNotification) onUpdateNotification(notifRecord);
+      showNotice(`Notification ${assignedNo} saved successfully (IW22)!`);
     }
   };
 
-  const resetWizardForm = () => {
-    setWizardStep(1);
-    setTitle('');
-    setDescription('');
-    setBreakdown(true);
-    setBreakdownPoint('Drive-End Mechanical Seal Gland & Bearing Pedestal');
-    setItems([]);
-    setTasks([]);
-    setTempItemCost('');
-    setTempItemNotes('');
+  const handlePutInProcess = () => {
+    setStatus('NOPR');
+    handleSaveNotification('NOPR');
   };
 
-  // =========================================================================
-  // Workbench Modal Actions (IW22 Updates)
-  // =========================================================================
-  const handleWbAddItem = () => {
-    if (!selectedNotif) return;
-    const prof = CATALOG_PROFILES.find((p) => p.id === selectedNotif.catalogProfileId) || CATALOG_PROFILES[0];
-    const partObj = prof.objectParts.find((p) => p.code === wbItemPart) || prof.objectParts[0];
-    const dmgObj = prof.damageCodes.find((d) => d.code === wbItemDamage) || prof.damageCodes[0];
-    const cauObj = prof.causeCodes.find((c) => c.code === wbItemCause) || prof.causeCodes[0];
-
-    const currentItems = selectedNotif.items || [];
-    const nextItemNo = String((currentItems.length + 1) * 10).padStart(4, '0');
-    const newItem = {
-      itemNo: nextItemNo,
-      objectPartCode: partObj.code,
-      objectPartText: partObj.text,
-      damageCode: dmgObj.code,
-      damageText: dmgObj.text,
-      causeCode: cauObj.code,
-      causeText: cauObj.text,
-      cost: Number(wbItemCost) || 0,
-      notes: wbItemNotes.trim() || 'Defect observed in inspection'
-    };
-
-    const updatedItems = [...currentItems, newItem];
-    const newTotalCost = updatedItems.reduce((acc, c) => acc + (Number(c.cost) || 0), 0);
-    const updated = {
-      ...selectedNotif,
-      items: updatedItems,
-      totalEstimatedCost: newTotalCost
-    };
-
-    setSelectedNotif(updated);
-    if (onUpdateNotification) onUpdateNotification(updated);
-    setWbItemCost('');
-    setWbItemNotes('');
+  const handleCompleteNotification = () => {
+    setStatus('NOCO');
+    handleSaveNotification('NOCO');
   };
 
-  const handleWbRemoveItem = (itemNo) => {
-    if (!selectedNotif) return;
-    const updatedItems = (selectedNotif.items || []).filter((i) => i.itemNo !== itemNo);
-    const newTotalCost = updatedItems.reduce((acc, c) => acc + (Number(c.cost) || 0), 0);
-    const updated = {
-      ...selectedNotif,
-      items: updatedItems,
-      totalEstimatedCost: newTotalCost
-    };
-    setSelectedNotif(updated);
-    if (onUpdateNotification) onUpdateNotification(updated);
+  const handleSupervisorApproval = () => {
+    setIsSupervised(true);
+    setStatus('APRV');
+    handleSaveNotification('APRV');
   };
 
-  const handleWbAddTask = () => {
-    if (!selectedNotif) return;
-    const prof = CATALOG_PROFILES.find((p) => p.id === selectedNotif.catalogProfileId) || CATALOG_PROFILES[0];
-    const taskObj = prof.taskCodes.find((t) => t.code === wbTaskCode);
-    const desc = wbTaskDesc.trim() || taskObj?.text || 'Maintenance Task';
-
-    const currentTasks = selectedNotif.tasks || [];
-    const nextTaskNo = `T${String(currentTasks.length + 1).padStart(2, '0')}`;
-    const newTask = {
-      taskNo: nextTaskNo,
-      taskCode: wbTaskCode || (taskObj?.code || 'T-GEN-01'),
-      description: desc,
-      assignedTo: wbTaskAssignee.trim() || 'Technician',
-      plannedStart: new Date().toISOString().slice(0, 16),
-      plannedFinish: wbTaskFinish || new Date(Date.now() + 86400000).toISOString().slice(0, 16),
-      status: 'Pending'
+  const handleConvertToWorkOrder = () => {
+    const currentNotif = {
+      notificationNo: notifNo,
+      type: notifType,
+      notificationType: notifType,
+      title,
+      description,
+      equipmentId,
+      functionalLocationId,
+      priority,
+      breakdown,
+      breakdownStart,
+      breakdownPoint,
+      catalogProfileId,
+      items,
+      totalEstimatedCost,
+      tasks
     };
-
-    const updatedTasks = [...currentTasks, newTask];
-    const updated = {
-      ...selectedNotif,
-      tasks: updatedTasks
-    };
-
-    setSelectedNotif(updated);
-    if (onUpdateNotification) onUpdateNotification(updated);
-    setWbTaskDesc('');
-    setWbTaskCode('');
+    if (onConvertNotification) {
+      onConvertNotification(currentNotif);
+    }
   };
 
-  const handleWbToggleTaskStatus = (taskNo) => {
-    if (!selectedNotif) return;
-    const updatedTasks = (selectedNotif.tasks || []).map((t) => {
-      if (t.taskNo === taskNo) {
-        const nextStatus = t.status === 'Completed' ? 'Pending' : (t.status === 'Pending' ? 'In Progress' : 'Completed');
-        return { ...t, status: nextStatus };
-      }
-      return t;
-    });
-    const updated = { ...selectedNotif, tasks: updatedTasks };
-    setSelectedNotif(updated);
-    if (onUpdateNotification) onUpdateNotification(updated);
+  const showNotice = (msg) => {
+    setActionNotice(msg);
+    setTimeout(() => setActionNotice(null), 3500);
   };
 
-  const handleWbSupervisorSignOff = () => {
-    if (!selectedNotif) return;
-    const updated = {
-      ...selectedNotif,
-      status: 'APRV',
-      supervisorSignOff: {
-        isSupervised: true,
-        supervisorName: wbSupvName.trim() || 'Plant Supervisor',
-        decision: wbSupvDecision,
-        signedAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        comments: wbSupvComments.trim()
-      }
-    };
-    setSelectedNotif(updated);
-    if (onUpdateNotification) onUpdateNotification(updated);
+  const handleCommandSubmit = (e) => {
+    e.preventDefault();
+    const cmd = commandText.trim().toUpperCase();
+    if (cmd === 'IW21') {
+      enterCreateMode();
+      setViewMode('sap_gui');
+    } else if (cmd === 'IW28' || cmd === 'IW29') {
+      setViewMode('list');
+    } else if (cmd === 'IW31') {
+      handleConvertToWorkOrder();
+    } else {
+      showNotice(`T-Code ${cmd} recognized.`);
+    }
   };
 
-  // =========================================================================
-  // Filtering & Metrics Calculations
-  // =========================================================================
-  const breakdownCount = notifications.filter((n) => n.breakdown).length;
-  const pendingSupvCount = notifications.filter((n) => !n.supervisorSignOff?.isSupervised && !n.orderId).length;
-  const approvedCount = notifications.filter((n) => n.status === 'APRV' || n.supervisorSignOff?.isSupervised).length;
-  const totalDefectCost = notifications.reduce((acc, n) => {
-    const cost = n.totalEstimatedCost || (n.items || []).reduce((sub, i) => sub + (Number(i.cost) || 0), 0);
-    return acc + cost;
-  }, 0);
-
+  // Filtered notifications for list view
   const filteredNotifs = notifications.filter((n) => {
-    // Search query match
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase();
       const match = (
@@ -430,1921 +399,1526 @@ export default function NotificationsView({
         n.title.toLowerCase().includes(q) ||
         n.equipmentId?.toLowerCase().includes(q) ||
         n.functionalLocationId?.toLowerCase().includes(q) ||
-        n.breakdownPoint?.toLowerCase().includes(q) ||
         n.reportedBy?.toLowerCase().includes(q)
       );
       if (!match) return false;
     }
-
-    // Filter pills
     if (activeFilter === 'breakdown') return Boolean(n.breakdown);
     if (activeFilter === 'pending_supv') return !n.supervisorSignOff?.isSupervised && !n.orderId;
     if (activeFilter === 'approved') return n.status === 'APRV' || n.supervisorSignOff?.isSupervised;
-    if (activeFilter === 'order_assigned') return Boolean(n.orderId);
-
     return true;
   });
 
   return (
-    <div className="page-body">
-      {/* Top Standard SAP PM Pipeline Header */}
+    <div className="page-body" style={{ padding: '16px 20px', maxWidth: '1440px', margin: '0 auto' }}>
+      {/* Toast Notice */}
+      {actionNotice && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '24px',
+          zIndex: 9999,
+          background: '#064e3b',
+          color: '#ffffff',
+          border: '1px solid #10b981',
+          borderRadius: '4px',
+          padding: '10px 18px',
+          fontSize: '0.85rem',
+          fontWeight: 600,
+          boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+        }}>
+          ✓ {actionNotice}
+        </div>
+      )}
+
+      {/* View Switcher Ribbon & Record Selector */}
       <div style={{
-        background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(16, 185, 129, 0.08))',
-        border: '1px solid rgba(59, 130, 246, 0.28)',
-        borderRadius: 'var(--radius-xl)',
-        padding: '20px 26px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: '16px',
-        boxShadow: 'var(--shadow-sm)'
+        gap: '12px',
+        marginBottom: '12px'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          <div style={{
-            width: '48px',
-            height: '48px',
-            borderRadius: 'var(--radius-md)',
-            background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: '#ffffff',
-            boxShadow: '0 4px 12px rgba(37, 99, 235, 0.3)'
-          }}>
-            <BellRing size={24} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                SAP Maintenance Notification Intake (IW21 / IW28)
-              </span>
-              <span className="mono-chip mono-chip-blue" style={{ fontSize: '0.72rem' }}>
-                T-Code: IW21
-              </span>
-            </div>
-            <div style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', marginTop: '3px' }}>
-              Standard industrial lifecycle: <strong>Technician Intake & Breakdown</strong> ➔ <strong>Catalog Profile & Cost Entry</strong> ➔ <strong>Action Tasks</strong> ➔ <strong>Supervision Sign-off & Order Conversion (IW31)</strong>.
-            </div>
-          </div>
+        {/* Record Quick Switcher */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)' }}>
+            Active Notification Record:
+          </span>
+          <select 
+            className="form-select"
+            style={{ width: '280px', height: '32px', fontSize: '0.82rem', padding: '2px 8px' }}
+            value={isCreateMode ? 'NEW' : notifNo}
+            onChange={(e) => {
+              if (e.target.value === 'NEW') {
+                enterCreateMode();
+              } else {
+                setSelectedNotifId(e.target.value);
+              }
+            }}
+          >
+            {notifications.map((n) => (
+              <option key={n.notificationNo} value={n.notificationNo}>
+                {n.notificationNo} — {n.title?.substring(0, 32)}...
+              </option>
+            ))}
+            <option value="NEW">+ Create New (IW21 Intake)</option>
+          </select>
+
+          <button 
+            className="btn btn-primary btn-sm"
+            onClick={enterCreateMode}
+            style={{ gap: '6px', height: '32px' }}
+          >
+            <Plus size={14} />
+            <span>New (IW21)</span>
+          </button>
         </div>
 
-        <button 
-          className="btn btn-primary"
-          onClick={() => {
-            setWizardStep(1);
-            setShowCreateModal(true);
-          }}
-          style={{ padding: '10px 18px', fontWeight: 700 }}
-        >
-          <PlusCircle size={16} />
-          <span>Create Notification (IW21)</span>
-        </button>
-      </div>
+        {/* View Mode: SAP GUI Screen vs IW28 List */}
+        <div style={{ display: 'flex', gap: '6px' }}>
+          <button 
+            className={`btn btn-sm ${viewMode === 'sap_gui' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('sap_gui')}
+            style={{ gap: '6px', height: '32px', fontWeight: 600 }}
+          >
+            <Monitor size={14} />
+            <span>SAP PM Screen (IW21 / IW22)</span>
+          </button>
 
-      {/* KPI Overview Summary Cards */}
-      <div className="grid-cards-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))' }}>
-        <div className="summary-card">
-          <div className="summary-card-header">
-            <span className="summary-card-title">Total Notifications</span>
-            <div className="summary-card-icon" style={{ background: 'var(--primary-subtle)', color: 'var(--primary)' }}>
-              <BellRing size={18} />
-            </div>
-          </div>
-          <div className="summary-card-value">{notifications.length}</div>
-          <div className="summary-card-subtext">Logged maintenance defects</div>
-        </div>
-
-        <div className="summary-card" style={{ borderColor: breakdownCount > 0 ? 'rgba(239, 68, 68, 0.4)' : undefined }}>
-          <div className="summary-card-header">
-            <span className="summary-card-title">Breakdown Halts</span>
-            <div className="summary-card-icon" style={{ background: 'var(--danger-subtle)', color: 'var(--danger)' }}>
-              <AlertTriangle size={18} />
-            </div>
-          </div>
-          <div className="summary-card-value" style={{ color: breakdownCount > 0 ? 'var(--danger)' : undefined }}>
-            {breakdownCount}
-          </div>
-          <div className="summary-card-subtext">Assets tripped or halted</div>
-        </div>
-
-        <div className="summary-card" style={{ borderColor: pendingSupvCount > 0 ? 'rgba(245, 158, 11, 0.4)' : undefined }}>
-          <div className="summary-card-header">
-            <span className="summary-card-title">Pending Supervision</span>
-            <div className="summary-card-icon" style={{ background: 'var(--warning-subtle)', color: 'var(--warning)' }}>
-              <UserCheck size={18} />
-            </div>
-          </div>
-          <div className="summary-card-value" style={{ color: pendingSupvCount > 0 ? 'var(--warning)' : undefined }}>
-            {pendingSupvCount}
-          </div>
-          <div className="summary-card-subtext">Awaiting supervisor review</div>
-        </div>
-
-        <div className="summary-card">
-          <div className="summary-card-header">
-            <span className="summary-card-title">Estimated Defect Costs</span>
-            <div className="summary-card-icon" style={{ background: 'var(--success-subtle)', color: 'var(--success)' }}>
-              <DollarSign size={18} />
-            </div>
-          </div>
-          <div className="summary-card-value" style={{ color: 'var(--success)' }}>
-            {formatCurrency(totalDefectCost)}
-          </div>
-          <div className="summary-card-subtext">Catalog profile cost estimates</div>
-        </div>
-      </div>
-
-      {/* Filter and Search Bar */}
-      <div className="filter-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '14px' }}>
-        <div className="search-box-wrap" style={{ flex: '1 1 320px', maxWidth: '480px' }}>
-          <Search size={16} className="search-icon" />
-          <input 
-            type="text"
-            className="search-input"
-            placeholder="Search notification no, equipment, failure point, reporter..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {[
-            { id: 'all', label: `All (${notifications.length})` },
-            { id: 'breakdown', label: `Breakdowns (${breakdownCount})` },
-            { id: 'pending_supv', label: `Pending Supervision (${pendingSupvCount})` },
-            { id: 'approved', label: `Supervised (${approvedCount})` },
-            { id: 'order_assigned', label: `Order Assigned (${notifications.filter((n) => n.orderId).length})` }
-          ].map((btn) => (
-            <button
-              key={btn.id}
-              onClick={() => setActiveFilter(btn.id)}
-              className={`btn btn-sm ${activeFilter === btn.id ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ fontSize: '0.78rem', borderRadius: 'var(--radius-full)' }}
-            >
-              {btn.label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Notifications Table Panel */}
-      <div className="panel-card">
-        <div className="panel-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div className="panel-title-wrap">
-            <span className="panel-title">Active Maintenance Notification Records</span>
-            <span className="mono-chip">{filteredNotifs.length} records</span>
-          </div>
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            Click any row to open Notification Workbench (IW22)
-          </div>
-        </div>
-
-        <div className="data-table-container">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th style={{ width: '135px' }}>Notification No</th>
-                <th style={{ width: '140px' }}>Breakdown Point</th>
-                <th>Malfunction Short Text</th>
-                <th>Reference Asset / Location</th>
-                <th style={{ width: '140px' }}>Catalog & Cost</th>
-                <th style={{ width: '120px' }}>Tasks Status</th>
-                <th style={{ width: '85px' }}>Priority</th>
-                <th style={{ width: '130px' }}>Status</th>
-                <th style={{ width: '180px', textAlign: 'right' }}>Workflow Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredNotifs.length === 0 ? (
-                <tr>
-                  <td colSpan={9} style={{ textAlign: 'center', padding: '56px 20px', color: 'var(--text-muted)' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                      <BellRing size={34} style={{ opacity: 0.35 }} />
-                      <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                        {notifications.length === 0 ? 'No Maintenance Notifications Logged' : 'No Notifications Match Filters'}
-                      </div>
-                      <div style={{ fontSize: '0.84rem', maxWidth: '440px', lineHeight: 1.5 }}>
-                        {notifications.length === 0 
-                          ? 'Raise a new technician notification (IW21) to record equipment anomalies, breakdown start times, catalog defect costs, and tasks.'
-                          : 'Try modifying your search or filter criteria.'}
-                      </div>
-                      <button 
-                        className="btn btn-primary btn-sm" 
-                        onClick={() => {
-                          setWizardStep(1);
-                          setShowCreateModal(true);
-                        }} 
-                        style={{ marginTop: '8px' }}
-                      >
-                        <PlusCircle size={14} />
-                        <span>Create Notification (IW21)</span>
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredNotifs.map((notif) => {
-                  const pBadge = getPriorityBadge(notif.priority);
-                  const sBadge = getNotificationStatusBadge(notif.status);
-                  const hasOrder = Boolean(notif.orderId);
-                  const isSupervised = notif.supervisorSignOff?.isSupervised || notif.status === 'APRV';
-                  const itemsCount = (notif.items || []).length;
-                  const tasksCount = (notif.tasks || []).length;
-                  const completedTasksCount = (notif.tasks || []).filter((t) => t.status === 'Completed').length;
-                  const notifCost = notif.totalEstimatedCost || (notif.items || []).reduce((acc, i) => acc + (Number(i.cost) || 0), 0);
-
-                  return (
-                    <tr 
-                      key={notif.notificationNo}
-                      onClick={() => {
-                        setSelectedNotif(notif);
-                        setWorkbenchTab('overview');
-                      }}
-                      style={{ cursor: 'pointer' }}
-                      className="table-row-hoverable"
-                    >
-                      <td>
-                        <div>
-                          <span className="mono-chip" style={{ fontWeight: 700, color: '#2563eb' }}>
-                            {notif.notificationNo}
-                          </span>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                            {notif.notificationType || notif.type || 'M1'} Defect
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>
-                        {notif.breakdown ? (
-                          <div>
-                            <span className="badge badge-urgent" style={{ fontSize: '0.68rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                              <AlertTriangle size={10} /> Breakdown Halt
-                            </span>
-                            {notif.breakdownPoint && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--danger)', fontWeight: 600, marginTop: '3px' }}>
-                                📍 {notif.breakdownPoint.substring(0, 28)}...
-                              </div>
-                            )}
-                            {notif.breakdownStart && (
-                              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                                {formatDate(notif.breakdownStart)}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div>
-                            <span className="badge badge-low" style={{ fontSize: '0.68rem' }}>
-                              Operational
-                            </span>
-                            {notif.breakdownPoint && (
-                              <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '3px' }}>
-                                📍 {notif.breakdownPoint.substring(0, 24)}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </td>
-
-                      <td>
-                        <div style={{ maxWidth: '280px' }}>
-                          <strong style={{ color: 'var(--text-main)', fontSize: '0.86rem' }}>
-                            {notif.title}
-                          </strong>
-                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px', lineHeight: 1.4 }}>
-                            {notif.description?.substring(0, 75)}...
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>
-                        <div>
-                          <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.82rem' }}>
-                            {notif.equipmentId || 'No direct EQ link'}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: '#2563eb', fontWeight: 500 }}>
-                            {notif.functionalLocationId}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>
-                        <div>
-                          <div style={{ fontWeight: 700, color: 'var(--success)', fontSize: '0.86rem' }}>
-                            {formatCurrency(notifCost)}
-                          </div>
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            {notif.catalogProfileId || 'Profile'}: {itemsCount} {itemsCount === 1 ? 'item' : 'items'}
-                          </div>
-                        </div>
-                      </td>
-
-                      <td>
-                        <div>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-main)' }}>
-                            {tasksCount > 0 ? `${completedTasksCount}/${tasksCount} Done` : 'No tasks'}
-                          </div>
-                          {tasksCount > 0 && (
-                            <div style={{
-                              width: '100%',
-                              height: '5px',
-                              background: '#e2e8f0',
-                              borderRadius: '3px',
-                              marginTop: '4px',
-                              overflow: 'hidden'
-                            }}>
-                              <div style={{
-                                width: `${(completedTasksCount / tasksCount) * 100}%`,
-                                height: '100%',
-                                background: completedTasksCount === tasksCount ? 'var(--success)' : 'var(--primary)',
-                                borderRadius: '3px'
-                              }} />
-                            </div>
-                          )}
-                        </div>
-                      </td>
-
-                      <td>
-                        <span className={`badge badge-${pBadge.color}`} style={{ fontSize: '0.7rem' }}>
-                          {pBadge.label}
-                        </span>
-                      </td>
-
-                      <td>
-                        <span className={`mono-chip mono-chip-${sBadge.color}`} style={{ fontSize: '0.7rem' }}>
-                          {sBadge.label}
-                        </span>
-                      </td>
-
-                      <td style={{ textAlign: 'right' }} onClick={(e) => e.stopPropagation()}>
-                        {hasOrder ? (
-                          <span className="mono-chip mono-chip-emerald" style={{ fontWeight: 700 }}>
-                            ✓ {notif.orderId}
-                          </span>
-                        ) : isSupervised ? (
-                          <button 
-                            className="btn btn-primary btn-sm"
-                            onClick={() => onConvertNotification(notif)}
-                            title="Convert approved notification into Scheduled Work Order (IW31)"
-                            style={{ gap: '6px' }}
-                          >
-                            <Wrench size={13} />
-                            <span>Convert to IW31</span>
-                          </button>
-                        ) : (
-                          <button 
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => {
-                              setSelectedNotif(notif);
-                              setWorkbenchTab('supervision');
-                            }}
-                            title="Open Supervisor Review & Sign-off"
-                            style={{ gap: '6px' }}
-                          >
-                            <UserCheck size={13} color="var(--warning)" />
-                            <span>Supervise</span>
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+          <button 
+            className={`btn btn-sm ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('list')}
+            style={{ gap: '6px', height: '32px', fontWeight: 600 }}
+          >
+            <List size={14} />
+            <span>Notification List (IW28)</span>
+          </button>
         </div>
       </div>
 
       {/* =====================================================================
-          MODAL 1: Create Maintenance Notification (IW21 Multi-Step Wizard)
-          Step 1: Technician Intake (Equipment, FL, Breakdown Start Point)
-          Step 2: Catalog Profile & Cost Entry
-          Step 3: Notification Tasks
-          Step 4: Supervision & Approval
+          PRIMARY VIEW: Authentic SAP PM Screen (Matches Screenshots Exactly)
           ===================================================================== */}
-      {showCreateModal && (
-        <div className="modal-overlay" onClick={() => setShowCreateModal(false)}>
-          <div 
-            className="modal-box" 
-            style={{ maxWidth: '820px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--primary-subtle)',
-                  color: 'var(--primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <BellRing size={20} />
-                </div>
-                <div>
-                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                    Create Maintenance Notification (IW21)
-                  </h3>
-                  <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                    Standard Plant Maintenance Intake: Defect Breakdown ➔ Catalog Profile & Costs ➔ Tasks ➔ Supervision
-                  </div>
-                </div>
+      {viewMode === 'sap_gui' ? (
+        <div style={{
+          background: '#f8fafc',
+          border: '1px solid #d1d9e2',
+          borderRadius: '4px',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+          overflow: 'hidden'
+        }}>
+          {/* SAP Top Command & System Bar (Header bar in screenshot #2) */}
+          <div style={{
+            background: '#eef2f6',
+            borderBottom: '1px solid #c9d3df',
+            padding: '6px 14px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}>
+            {/* T-Code Command Input Box */}
+            <form onSubmit={handleCommandSubmit} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', background: '#ffffff', border: '1px solid #a8b5c4', borderRadius: '2px', padding: '1px 6px' }}>
+                <input 
+                  type="text"
+                  value={commandText}
+                  onChange={(e) => setCommandText(e.target.value)}
+                  style={{
+                    width: '70px',
+                    border: 'none',
+                    outline: 'none',
+                    fontSize: '12px',
+                    fontWeight: 700,
+                    fontFamily: 'monospace',
+                    textTransform: 'uppercase',
+                    color: '#0f172a'
+                  }}
+                  placeholder="IW21"
+                />
+                <button type="submit" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '1px', display: 'flex' }} title="Execute T-Code">
+                  <Check size={13} color="#16a34a" />
+                </button>
               </div>
-              <button className="btn btn-secondary btn-sm" onClick={() => setShowCreateModal(false)}>
-                <X size={16} />
+
+              {/* SAP Standard System Toolbar Icons (Floppy Save, Back, Exit, Cancel, Print) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px', borderLeft: '1px solid #cbd5e1', paddingLeft: '8px', marginLeft: '4px' }}>
+                <button 
+                  type="button"
+                  onClick={() => handleSaveNotification()}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: '2px' }}
+                  title="Save Notification (Ctrl+S)"
+                >
+                  <Save size={15} color="#2563eb" />
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => setViewMode('list')}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: '2px' }}
+                  title="Back (F3)"
+                >
+                  <ArrowLeft size={15} color="#16a34a" />
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => enterCreateMode()}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: '2px' }}
+                  title="Create New (IW21)"
+                >
+                  <Plus size={15} color="#ca8a04" />
+                </button>
+
+                <button 
+                  type="button"
+                  onClick={() => window.print()}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 6px', borderRadius: '2px' }}
+                  title="Print Notification"
+                >
+                  <Printer size={15} color="#475569" />
+                </button>
+              </div>
+            </form>
+
+            {/* Top Toolbar Action Links (Matches Screenshot #2) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.8rem', color: '#1e40af' }}>
+              <span 
+                style={{ cursor: 'pointer', textDecoration: 'none', fontWeight: 500 }}
+                onClick={() => setActiveSapTab('reference')}
+              >
+                Display object
+              </span>
+              <span>•</span>
+              <span 
+                style={{ cursor: 'pointer', fontWeight: 500 }}
+                onClick={handlePutInProcess}
+              >
+                Put in process
+              </span>
+              <span>•</span>
+              <span 
+                style={{ cursor: 'pointer', fontWeight: 500 }}
+                onClick={handleCompleteNotification}
+              >
+                Complete...
+              </span>
+              <span>•</span>
+              <span 
+                style={{ cursor: 'pointer', fontWeight: 700, color: '#2563eb' }}
+                onClick={handleConvertToWorkOrder}
+                title="Generate Work Order IW31 directly from this notification"
+              >
+                Convert to Order (IW31)
+              </span>
+              <span>•</span>
+              <span 
+                style={{ cursor: 'pointer', color: '#dc2626', fontWeight: 500 }}
+                onClick={() => setViewMode('list')}
+              >
+                Exit
+              </span>
+            </div>
+          </div>
+
+          {/* SAP Screen Title Bar (Matches Screenshot #1 & #2 Title) */}
+          <div style={{
+            background: '#ffffff',
+            padding: '12px 20px',
+            borderBottom: '1px solid #e2e8f0',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <div>
+              <h2 style={{
+                fontSize: '1.15rem',
+                fontWeight: 700,
+                fontStyle: 'italic',
+                color: '#1e3a8a',
+                letterSpacing: '-0.01em',
+                margin: 0
+              }}>
+                {isCreateMode 
+                  ? `Create PM Notification: Maintenance Request (${commandText || 'IW21'})`
+                  : `Change PM Notification: ${notifNo} (IW22)`}
+              </h2>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span className={`mono-chip mono-chip-${getNotificationStatusBadge(status).color}`} style={{ fontWeight: 700 }}>
+                {getNotificationStatusBadge(status).label}
+              </span>
+              {orderId && (
+                <span className="mono-chip mono-chip-emerald" style={{ fontWeight: 700 }}>
+                  Order: {orderId}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* SAP Header Fields Section (Matches Top section of Screenshot #1 & #2) */}
+          <div style={{
+            background: '#f8fafc',
+            borderBottom: '1px solid #dbe2ea',
+            padding: '14px 20px',
+            display: 'grid',
+            gridTemplateColumns: 'minmax(300px, 1fr) minmax(220px, 320px) minmax(200px, 260px)',
+            gap: '16px',
+            alignItems: 'center'
+          }}>
+            {/* Notification No & Short Text */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155', minWidth: '85px' }}>
+                Notification:
+              </span>
+              <input 
+                type="text"
+                readOnly
+                value={notifNo}
+                style={{
+                  width: '135px',
+                  height: '28px',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '2px',
+                  padding: '2px 8px',
+                  fontSize: '0.84rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  color: '#1e293b'
+                }}
+              />
+              <select 
+                value={notifType}
+                onChange={(e) => setNotifType(e.target.value)}
+                style={{
+                  height: '28px',
+                  background: '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '2px',
+                  fontSize: '0.82rem',
+                  fontWeight: 600,
+                  padding: '2px 6px'
+                }}
+              >
+                <option value="M1">M1 Maintenance Request</option>
+                <option value="M2">M2 Breakdown Halt</option>
+                <option value="M3">M3 Activity Report</option>
+              </select>
+            </div>
+
+            {/* Notific. Status */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
+                Notific. Status:
+              </span>
+              <input 
+                type="text"
+                readOnly
+                value={status}
+                style={{
+                  width: '90px',
+                  height: '28px',
+                  background: '#f1f5f9',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '2px',
+                  padding: '2px 8px',
+                  fontSize: '0.84rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  color: '#2563eb'
+                }}
+              />
+              <span 
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '2px',
+                  background: '#e2e8f0',
+                  color: '#3b82f6',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '0.75rem',
+                  fontWeight: 800,
+                  fontStyle: 'italic',
+                  cursor: 'pointer'
+                }}
+                title="System Status Details (OSNO / APRV / NOCO)"
+              >
+                i
+              </span>
+            </div>
+
+            {/* Order Field */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '0.84rem', fontWeight: 600, color: '#334155' }}>
+                Order:
+              </span>
+              <input 
+                type="text"
+                value={orderId}
+                onChange={(e) => setOrderId(e.target.value)}
+                placeholder="[ None ]"
+                style={{
+                  width: '120px',
+                  height: '28px',
+                  background: orderId ? '#ecfdf5' : '#ffffff',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '2px',
+                  padding: '2px 8px',
+                  fontSize: '0.84rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
+                  color: orderId ? '#065f46' : '#64748b'
+                }}
+              />
+              <button 
+                type="button" 
+                onClick={handleConvertToWorkOrder}
+                style={{ background: '#e2e8f0', border: '1px solid #cbd5e1', borderRadius: '2px', padding: '3px 6px', cursor: 'pointer' }}
+                title="Assign or Generate Work Order IW31"
+              >
+                <Wrench size={13} color="#2563eb" />
               </button>
             </div>
+          </div>
 
-            {/* Wizard Progress Ribbon */}
-            <div style={{ padding: '14px 28px', background: '#f8fafc', borderBottom: '1px solid var(--border-subtle)' }}>
-              <div className="workflow-ribbon" style={{ margin: 0, padding: '4px' }}>
-                <div 
-                  className={`ribbon-step ${wizardStep === 1 ? 'current' : wizardStep > 1 ? 'done' : ''}`}
-                  onClick={() => setWizardStep(1)}
-                  style={{ cursor: 'pointer' }}
+          {/* SAP Tab Strip Bar (Matches Screenshot #1 & #2 exactly!) */}
+          <div style={{
+            background: '#eef2f6',
+            borderBottom: '2px solid #2563eb',
+            padding: '4px 14px 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+            overflowX: 'auto'
+          }}>
+            {[
+              { id: 'notification', label: 'Notification' },
+              { id: 'reference', label: 'Reference object' },
+              { id: 'malfunction', label: 'Malfunction, breakdown' },
+              { id: 'items', label: `Items (${items.length})` },
+              { id: 'tasks', label: `Tasks (${tasks.length})` },
+              { id: 'supervision', label: 'Supervision / Activities' }
+            ].map((tab) => {
+              const isActive = activeSapTab === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveSapTab(tab.id)}
+                  style={{
+                    background: isActive ? '#ffffff' : '#dbe3ed',
+                    color: isActive ? '#1e3a8a' : '#475569',
+                    border: '1px solid #cbd5e1',
+                    borderBottom: isActive ? '2px solid #ffffff' : '1px solid #cbd5e1',
+                    borderRadius: '4px 4px 0 0',
+                    padding: '7px 18px',
+                    fontSize: '0.84rem',
+                    fontWeight: isActive ? 700 : 500,
+                    cursor: 'pointer',
+                    marginBottom: '-2px',
+                    zIndex: isActive ? 2 : 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}
                 >
-                  <span>1. Header & Breakdown</span>
-                </div>
-                <div className="ribbon-arrow">➔</div>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-                <div 
-                  className={`ribbon-step ${wizardStep === 2 ? 'current' : wizardStep > 2 ? 'done' : ''}`}
-                  onClick={() => title.trim() && setWizardStep(2)}
-                  style={{ cursor: title.trim() ? 'pointer' : 'not-allowed' }}
-                >
-                  <span>2. Catalog Profile & Costs (${totalEstimatedCost})</span>
-                </div>
-                <div className="ribbon-arrow">➔</div>
+          {/* Two-Column SAP Layout: Main Form Area + Right Side Action Box */}
+          <div style={{ display: 'flex', minHeight: '520px', background: '#ffffff' }}>
+            {/* MAIN TAB CONTENT AREA */}
+            <div style={{ flex: 1, padding: '20px 24px', overflowY: 'auto' }}>
+              {/* TAB 1: NOTIFICATION (Main View matching Screenshot #1 & #2!) */}
+              {activeSapTab === 'notification' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  {/* SAP Group Box: Reference object (Screenshot highlight!) */}
+                  <div style={{
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '3px',
+                    padding: '16px 20px',
+                    background: '#ffffff',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: '-10px',
+                      left: '14px',
+                      background: '#ffffff',
+                      padding: '0 8px',
+                      fontSize: '0.84rem',
+                      fontWeight: 700,
+                      color: '#1e3a8a'
+                    }}>
+                      Reference Object
+                    </div>
 
-                <div 
-                  className={`ribbon-step ${wizardStep === 3 ? 'current' : wizardStep > 3 ? 'done' : ''}`}
-                  onClick={() => title.trim() && setWizardStep(3)}
-                  style={{ cursor: title.trim() ? 'pointer' : 'not-allowed' }}
-                >
-                  <span>3. Action Tasks ({tasks.length})</span>
-                </div>
-                <div className="ribbon-arrow">➔</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '6px' }}>
+                      {/* Functional Location (Highlighted in green box in Screenshot #1!) */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '130px', fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
+                          Functional loc.:
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                          <input 
+                            type="text"
+                            value={functionalLocationId}
+                            onChange={(e) => setFunctionalLocationId(e.target.value)}
+                            style={{
+                              width: '210px',
+                              height: '28px',
+                              background: '#ffffff',
+                              border: '2px solid #22c55e', // Highlighted green like user screenshot #1!
+                              borderRadius: '2px',
+                              padding: '2px 8px',
+                              fontSize: '0.84rem',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              color: '#0f172a'
+                            }}
+                          />
+                          <span style={{ fontSize: '0.84rem', color: '#475569', fontWeight: 500 }}>
+                            {currentFuncLoc?.name || 'Plant Pumping Station Section'}
+                          </span>
+                          <span style={{
+                            padding: '2px 6px',
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '2px',
+                            fontSize: '0.72rem',
+                            color: '#64748b'
+                          }}>
+                            🏢 Structure
+                          </span>
+                        </div>
+                      </div>
 
-                <div 
-                  className={`ribbon-step ${wizardStep === 4 ? 'current' : ''}`}
-                  onClick={() => title.trim() && setWizardStep(4)}
-                  style={{ cursor: title.trim() ? 'pointer' : 'not-allowed' }}
-                >
-                  <span>4. Supervision & Approval</span>
-                </div>
-              </div>
-            </div>
+                      {/* Equipment */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '130px', fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
+                          Equipment:
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                          <select 
+                            value={equipmentId}
+                            onChange={(e) => handleEquipmentSelect(e.target.value)}
+                            style={{
+                              width: '210px',
+                              height: '28px',
+                              background: '#ffffff',
+                              border: '1px solid #aeb8c3',
+                              borderRadius: '2px',
+                              padding: '2px 8px',
+                              fontSize: '0.84rem',
+                              fontFamily: 'monospace',
+                              fontWeight: 700,
+                              color: '#0f172a'
+                            }}
+                          >
+                            {EQUIPMENT_LIST.map((eq) => (
+                              <option key={eq.id} value={eq.id}>{eq.id}</option>
+                            ))}
+                          </select>
+                          <span style={{ fontSize: '0.84rem', color: '#475569', fontWeight: 500 }}>
+                            {currentEquipment?.name || 'Conveyor Line / Pump'}
+                          </span>
+                          <span style={{
+                            padding: '2px 6px',
+                            background: '#f1f5f9',
+                            border: '1px solid #cbd5e1',
+                            borderRadius: '2px',
+                            fontSize: '0.72rem',
+                            color: '#64748b'
+                          }}>
+                            ⚙ Asset
+                          </span>
+                        </div>
+                      </div>
 
-            {/* Modal Body: Wizard Step Forms */}
-            <div className="modal-body" style={{ maxHeight: '65vh' }}>
-              {/* STEP 1: Notification Header & Breakdown Details */}
-              {wizardStep === 1 && (
+                      {/* Assembly */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '130px', fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
+                          Assembly:
+                        </label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                          <input 
+                            type="text"
+                            value={assembly}
+                            onChange={(e) => setAssembly(e.target.value)}
+                            style={{
+                              width: '210px',
+                              height: '28px',
+                              background: '#ffffff',
+                              border: '1px solid #aeb8c3',
+                              borderRadius: '2px',
+                              padding: '2px 8px',
+                              fontSize: '0.84rem',
+                              color: '#0f172a'
+                            }}
+                          />
+                          <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                            Sub-assembly component unit
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SAP Group Box: Subject (Matches Screenshot #2 Subject box!) */}
+                  <div style={{
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '3px',
+                    padding: '16px 20px',
+                    background: '#ffffff',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: '-10px',
+                      left: '14px',
+                      background: '#ffffff',
+                      padding: '0 8px',
+                      fontSize: '0.84rem',
+                      fontWeight: 700,
+                      color: '#1e3a8a'
+                    }}>
+                      Subject
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '6px' }}>
+                      {/* Coding & Description line */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '110px', fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
+                          Coding:
+                        </label>
+                        <input 
+                          type="text" 
+                          value={notifType} 
+                          readOnly 
+                          style={{ width: '50px', height: '28px', background: '#f1f5f9', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 700, borderRadius: '2px' }} 
+                        />
+                        <input 
+                          type="text" 
+                          value={notifType === 'M2' ? 'Breakdown' : notifType === 'M1' ? 'Maintenance Request' : 'Activity'} 
+                          readOnly 
+                          style={{ width: '160px', height: '28px', background: '#f1f5f9', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.82rem', borderRadius: '2px' }} 
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '110px', fontSize: '0.84rem', color: '#334155', fontWeight: 600 }}>
+                          Description:
+                        </label>
+                        <input 
+                          type="text"
+                          required
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          placeholder="Short description of maintenance defect or request"
+                          style={{
+                            flex: 1,
+                            height: '28px',
+                            background: '#ffffff',
+                            border: '1px solid #aeb8c3',
+                            borderRadius: '2px',
+                            padding: '2px 10px',
+                            fontSize: '0.88rem',
+                            fontWeight: 600,
+                            color: '#0f172a'
+                          }}
+                        />
+                      </div>
+
+                      {/* Multi-line SAP Text Editor Box (Exact match to Screenshot #2!) */}
+                      <div style={{ marginTop: '4px' }}>
+                        <textarea 
+                          rows={5}
+                          value={description}
+                          onChange={(e) => setDescription(e.target.value)}
+                          placeholder="Maintenance notification for the testing purpose. Detailed description of symptoms..."
+                          style={{
+                            width: '100%',
+                            fontFamily: 'monospace',
+                            fontSize: '0.85rem',
+                            lineHeight: 1.5,
+                            border: '1px solid #aeb8c3',
+                            borderRadius: '2px',
+                            padding: '10px 12px',
+                            background: '#ffffff',
+                            color: '#0f172a'
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SAP Group Box: Responsibilities (Matches Screenshot #1 bottom box) */}
+                  <div style={{
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '3px',
+                    padding: '16px 20px',
+                    background: '#ffffff',
+                    position: 'relative'
+                  }}>
+                    <div style={{
+                      position: 'absolute',
+                      top: '-10px',
+                      left: '14px',
+                      background: '#ffffff',
+                      padding: '0 8px',
+                      fontSize: '0.84rem',
+                      fontWeight: 700,
+                      color: '#1e3a8a'
+                    }}>
+                      Responsibilities
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '14px', marginTop: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '110px', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>
+                          Planner group:
+                        </label>
+                        <input 
+                          type="text"
+                          value={plannerGroup}
+                          onChange={(e) => setPlannerGroup(e.target.value)}
+                          style={{ width: '130px', height: '28px', border: '1px solid #cbd5e1', borderRadius: '2px', padding: '2px 8px', fontSize: '0.84rem' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '110px', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>
+                          Main WorkCtr:
+                        </label>
+                        <input 
+                          type="text"
+                          value={mainWorkCtr}
+                          onChange={(e) => setMainWorkCtr(e.target.value)}
+                          style={{ width: '130px', height: '28px', border: '1px solid #cbd5e1', borderRadius: '2px', padding: '2px 8px', fontSize: '0.84rem' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '110px', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>
+                          Reported by:
+                        </label>
+                        <input 
+                          type="text"
+                          value={reportedBy}
+                          onChange={(e) => setReportedBy(e.target.value)}
+                          style={{ flex: 1, height: '28px', border: '1px solid #cbd5e1', borderRadius: '2px', padding: '2px 8px', fontSize: '0.84rem' }}
+                        />
+                      </div>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <label style={{ width: '110px', fontSize: '0.82rem', color: '#334155', fontWeight: 600 }}>
+                          Priority:
+                        </label>
+                        <select 
+                          value={priority}
+                          onChange={(e) => setPriority(e.target.value)}
+                          style={{ width: '130px', height: '28px', border: '1px solid #cbd5e1', borderRadius: '2px', padding: '2px 8px', fontSize: '0.82rem' }}
+                        >
+                          <option value="Urgent">Urgent (L1)</option>
+                          <option value="High">High (L2)</option>
+                          <option value="Medium">Medium (L3)</option>
+                          <option value="Low">Low (L4)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: REFERENCE OBJECT (Deep Dive) */}
+              {activeSapTab === 'reference' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '3px', padding: '16px 20px', background: '#ffffff' }}>
+                    <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '14px' }}>
+                      Asset Master Data Hierarchy
+                    </h4>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+                      <div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>Maintenance Plant</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>PL01 — Hamburg Refinery</div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>Functional Location</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#2563eb' }}>{functionalLocationId}</div>
+                        <div style={{ fontSize: '0.74rem', color: '#475569' }}>{currentFuncLoc?.name}</div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>Target Equipment</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0f172a' }}>{equipmentId}</div>
+                        <div style={{ fontSize: '0.74rem', color: '#475569' }}>{currentEquipment?.name}</div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>Category & Criticality</div>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 600, color: '#0f172a' }}>
+                          {currentEquipment?.category} ({currentEquipment?.criticality})
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>Manufacturer & Serial</div>
+                        <div style={{ fontSize: '0.84rem', color: '#0f172a' }}>
+                          {currentEquipment?.manufacturer} • {currentEquipment?.serialNo}
+                        </div>
+                      </div>
+
+                      <div>
+                        <div style={{ fontSize: '0.74rem', color: '#64748b' }}>Cost Center</div>
+                        <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#0f172a' }}>
+                          {currentFuncLoc?.costCenterId || 'CC-4100'} (Process OpEx)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 3: MALFUNCTION, BREAKDOWN (Where breakdown started requirement!) */}
+              {activeSapTab === 'malfunction' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                   <div style={{
-                    background: 'var(--primary-subtle)',
-                    border: '1px solid rgba(37, 99, 235, 0.25)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '12px 16px',
-                    fontSize: '0.82rem',
-                    color: 'var(--text-secondary)'
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '3px',
+                    padding: '18px 20px',
+                    background: breakdown ? '#fef2f2' : '#ffffff'
                   }}>
-                    <strong>Step 1: Technician Defect Intake (IW21)</strong> — Specify the target equipment, functional location, and the precise physical point and timestamp where the breakdown started.
-                  </div>
+                    <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: breakdown ? '#dc2626' : '#1e3a8a', marginBottom: '14px' }}>
+                      Breakdown & Malfunction Intake Data
+                    </h4>
 
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">
-                        <span>Notification Type</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
+                        <input 
+                          type="checkbox"
+                          checked={breakdown}
+                          onChange={(e) => {
+                            setBreakdown(e.target.checked);
+                            if (e.target.checked) setNotifType('M2');
+                          }}
+                          style={{ width: '18px', height: '18px' }}
+                        />
+                        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: breakdown ? '#dc2626' : '#0f172a' }}>
+                          Breakdown Halt (Asset currently tripped or out of operational service)
+                        </span>
                       </label>
-                      <select 
-                        className="form-select"
-                        value={notifType}
-                        onChange={(e) => setNotifType(e.target.value)}
-                      >
-                        <option value="M2">M2 - Breakdown Halt (Malfunction)</option>
-                        <option value="M1">M1 - Corrective Defect (Maintenance Request)</option>
-                        <option value="M3">M3 - Activity / Inspection Report</option>
-                      </select>
-                    </div>
 
-                    <div className="form-group">
-                      <label className="form-label">
-                        <span>Priority Level</span>
-                      </label>
-                      <select 
-                        className="form-select"
-                        value={priority}
-                        onChange={(e) => setPriority(e.target.value)}
-                      >
-                        <option value="Urgent">Urgent (L1 - Production Stoppage)</option>
-                        <option value="High">High (L2 - Within 24 Hours)</option>
-                        <option value="Medium">Medium (L3 - Scheduled Plan)</option>
-                        <option value="Low">Low (L4 - Backlog)</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">
-                      <span>Malfunction Short Title <span className="required">*</span></span>
-                    </label>
-                    <input 
-                      type="text"
-                      required
-                      className="form-input"
-                      placeholder="e.g. Centrifugal slurry pump severe seal gland leak & high bearing vibration"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label className="form-label">
-                      <span>Detailed Failure Symptoms & Observations</span>
-                    </label>
-                    <textarea 
-                      className="form-textarea"
-                      rows={3}
-                      placeholder="Describe vibration thresholds, temperature readings, pressure drop, liquid ingress..."
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="form-grid-2">
-                    <div className="form-group">
-                      <label className="form-label">
-                        <span>Target Equipment Reference</span>
-                      </label>
-                      <select 
-                        className="form-select"
-                        value={equipmentId}
-                        onChange={(e) => handleEquipmentSelect(e.target.value)}
-                      >
-                        {EQUIPMENT_LIST.map((eq) => (
-                          <option key={eq.id} value={eq.id}>
-                            {eq.id} — {eq.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="form-group">
-                      <label className="form-label">
-                        <span>Functional Location</span>
-                      </label>
-                      <select 
-                        className="form-select"
-                        value={functionalLocationId}
-                        onChange={(e) => setFunctionalLocationId(e.target.value)}
-                      >
-                        {FUNCTIONAL_LOCATIONS.map((fl) => (
-                          <option key={fl.id} value={fl.id}>
-                            {fl.id} — {fl.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* BREAKDOWN SECTION: Where Breakdown Started & Timestamp */}
-                  <div style={{
-                    background: breakdown ? 'var(--danger-subtle)' : '#f8fafc',
-                    border: `1px solid ${breakdown ? 'rgba(239, 68, 68, 0.35)' : 'var(--border-subtle)'}`,
-                    borderRadius: 'var(--radius-md)',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '14px',
-                    transition: 'var(--transition-normal)'
-                  }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox"
-                        checked={breakdown}
-                        onChange={(e) => {
-                          setBreakdown(e.target.checked);
-                          if (e.target.checked) setNotifType('M2');
-                        }}
-                        style={{ width: '18px', height: '18px' }}
-                      />
-                      <span style={{ fontSize: '0.9rem', fontWeight: 700, color: breakdown ? 'var(--danger)' : 'var(--text-main)' }}>
-                        Breakdown Halt (Asset currently tripped or out of service)
-                      </span>
-                    </label>
-
-                    {breakdown && (
-                      <div className="form-grid-2" style={{ marginTop: '4px' }}>
-                        <div className="form-group">
-                          <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                            <span>Where Breakdown Started (Failure Point) <span className="required">*</span></span>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#dc2626', display: 'block', marginBottom: '6px' }}>
+                            Where Breakdown Started (Failure Point):
                           </label>
                           <input 
                             type="text"
-                            required
-                            className="form-input"
-                            placeholder="e.g. Drive-End Mechanical Seal Gland & Bearing Pedestal"
                             value={breakdownPoint}
                             onChange={(e) => setBreakdownPoint(e.target.value)}
+                            placeholder="e.g. Drive-End Mechanical Seal Gland & Bearing Pedestal"
+                            style={{
+                              width: '100%',
+                              height: '30px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '2px',
+                              padding: '2px 10px',
+                              fontSize: '0.85rem',
+                              fontWeight: 600,
+                              background: '#ffffff'
+                            }}
                           />
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            Component or physical location where initial failure was detected
-                          </span>
                         </div>
 
-                        <div className="form-group">
-                          <label className="form-label" style={{ color: 'var(--danger)', fontWeight: 600 }}>
-                            <span>Breakdown Start Timestamp <span className="required">*</span></span>
+                        <div>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#dc2626', display: 'block', marginBottom: '6px' }}>
+                            Malfunction Start Timestamp:
                           </label>
                           <input 
                             type="datetime-local"
-                            required
-                            className="form-input"
                             value={breakdownStart}
                             onChange={(e) => setBreakdownStart(e.target.value)}
+                            style={{
+                              width: '100%',
+                              height: '30px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '2px',
+                              padding: '2px 10px',
+                              fontSize: '0.85rem',
+                              background: '#ffffff'
+                            }}
                           />
-                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                            Time production was disrupted or tripped
-                          </span>
                         </div>
-                      </div>
-                    )}
-                  </div>
 
-                  <div className="form-group">
-                    <label className="form-label">
-                      <span>Reported By / Technician</span>
-                    </label>
-                    <input 
-                      type="text"
-                      className="form-input"
-                      value={reportedBy}
-                      onChange={(e) => setReportedBy(e.target.value)}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 2: Catalog Profile Items & Cost Entry */}
-              {wizardStep === 2 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  <div style={{
-                    background: 'var(--success-subtle)',
-                    border: '1px solid rgba(16, 185, 129, 0.25)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '12px 16px',
-                    fontSize: '0.82rem',
-                    color: 'var(--text-secondary)'
-                  }}>
-                    <strong>Step 2: Catalog Profile & Cost Entry</strong> — Select the appropriate Catalog Profile and add defect items (Object Part, Damage Code, Cause Code). Enter what is the estimated repair / replacement cost for each item.
-                  </div>
-
-                  {/* Catalog Profile Selector */}
-                  <div className="form-group">
-                    <label className="form-label">
-                      <span>Catalog Profile Template</span>
-                    </label>
-                    <select 
-                      className="form-select"
-                      value={catalogProfileId}
-                      onChange={(e) => setCatalogProfileId(e.target.value)}
-                    >
-                      {CATALOG_PROFILES.map((cp) => (
-                        <option key={cp.id} value={cp.id}>
-                          {cp.name} ({cp.category})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Current Added Items Table */}
-                  <div className="panel-card" style={{ margin: 0, boxShadow: 'none' }}>
-                    <div className="panel-header" style={{ padding: '12px 18px', background: '#f8fafc' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)' }}>
-                        Catalog Profile Defect Items ({items.length})
-                      </span>
-                      <span className="mono-chip mono-chip-emerald" style={{ fontWeight: 700, fontSize: '0.82rem' }}>
-                        Total Cost: {formatCurrency(totalEstimatedCost)}
-                      </span>
-                    </div>
-
-                    <div className="data-table-container">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '60px' }}>Item</th>
-                            <th>Object Part (B)</th>
-                            <th>Damage Code (C)</th>
-                            <th>Cause Code (5)</th>
-                            <th style={{ width: '110px' }}>Est. Cost</th>
-                            <th style={{ width: '50px' }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {items.length === 0 ? (
-                            <tr>
-                              <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                                No catalog items added yet. Use the form below to enter the defect parts and their estimated repair costs.
-                              </td>
-                            </tr>
-                          ) : (
-                            items.map((it) => (
-                              <tr key={it.itemNo}>
-                                <td><span className="mono-chip">{it.itemNo}</span></td>
-                                <td>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.82rem' }}>{it.objectPartText}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{it.objectPartCode}</div>
-                                </td>
-                                <td>
-                                  <div style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 500 }}>{it.damageText}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{it.damageCode}</div>
-                                </td>
-                                <td>
-                                  <div style={{ fontSize: '0.82rem' }}>{it.causeText}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{it.causeCode}</div>
-                                </td>
-                                <td>
-                                  <span style={{ fontWeight: 700, color: 'var(--success)', fontSize: '0.86rem' }}>
-                                    {formatCurrency(it.cost)}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button 
-                                    type="button"
-                                    className="btn btn-secondary btn-sm"
-                                    style={{ padding: '4px', color: 'var(--danger)' }}
-                                    onClick={() => handleRemoveItem(it.itemNo)}
-                                    title="Remove item"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Add New Catalog Item Card */}
-                  <div style={{
-                    background: '#f8fafc',
-                    border: '1px dashed var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                  }}>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                      + Add Catalog Profile Defect Item & Cost Entry
-                    </div>
-
-                    <div className="form-grid-3">
-                      <div className="form-group">
-                        <label className="form-label"><span>Object Part (Baugruppe)</span></label>
-                        <select 
-                          className="form-select"
-                          value={tempItemPart}
-                          onChange={(e) => setTempItemPart(e.target.value)}
-                        >
-                          <option value="">-- Select Object Part --</option>
-                          {currentProfile.objectParts.map((p) => (
-                            <option key={p.code} value={p.code}>{p.code}: {p.text}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label"><span>Damage Code (Schadensbild)</span></label>
-                        <select 
-                          className="form-select"
-                          value={tempItemDamage}
-                          onChange={(e) => setTempItemDamage(e.target.value)}
-                        >
-                          <option value="">-- Select Damage Code --</option>
-                          {currentProfile.damageCodes.map((d) => (
-                            <option key={d.code} value={d.code}>{d.code}: {d.text}</option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label"><span>Cause Code (Ursache)</span></label>
-                        <select 
-                          className="form-select"
-                          value={tempItemCause}
-                          onChange={(e) => setTempItemCause(e.target.value)}
-                        >
-                          <option value="">-- Select Cause Code --</option>
-                          {currentProfile.causeCodes.map((c) => (
-                            <option key={c.code} value={c.code}>{c.code}: {c.text}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    <div className="form-grid-2">
-                      <div className="form-group">
-                        <label className="form-label">
-                          <span style={{ color: 'var(--success)', fontWeight: 700 }}>
-                            Estimated Item Cost ($) <span className="required">*</span>
-                          </span>
-                        </label>
-                        <div style={{ position: 'relative' }}>
-                          <span style={{ position: 'absolute', left: '12px', top: '10px', color: 'var(--text-muted)' }}>$</span>
+                        <div>
+                          <label style={{ fontSize: '0.82rem', fontWeight: 600, color: '#334155', display: 'block', marginBottom: '6px' }}>
+                            Breakdown Duration (Hours):
+                          </label>
                           <input 
                             type="number"
                             min="0"
-                            step="10"
-                            className="form-input"
-                            style={{ paddingLeft: '28px', fontWeight: 700 }}
+                            step="0.5"
+                            value={breakdownDurationHours}
+                            onChange={(e) => setBreakdownDurationHours(e.target.value)}
+                            style={{
+                              width: '100%',
+                              height: '30px',
+                              border: '1px solid #cbd5e1',
+                              borderRadius: '2px',
+                              padding: '2px 10px',
+                              fontSize: '0.85rem',
+                              background: '#ffffff'
+                            }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 4: ITEMS (Catalog profile items with cost requirement!) */}
+              {activeSapTab === 'items' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+                  <div style={{
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '3px',
+                    padding: '16px 20px',
+                    background: '#ffffff'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                      <div>
+                        <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e3a8a' }}>
+                          Catalog Profile: {currentProfile.name}
+                        </h4>
+                        <div style={{ fontSize: '0.76rem', color: '#64748b' }}>
+                          Defect items with Object Part (B), Damage Code (C), Cause Code (5) and Estimated Costs
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: '0.74rem', color: '#64748b' }}>Total Defect Cost: </span>
+                        <strong style={{ fontSize: '1.1rem', color: '#16a34a' }}>{formatCurrency(totalEstimatedCost)}</strong>
+                      </div>
+                    </div>
+
+                    {/* Items Table */}
+                    <table className="data-table" style={{ width: '100%', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          <th style={{ width: '50px' }}>Item</th>
+                          <th>Object Part (Baugruppe)</th>
+                          <th>Damage Code (Schaden)</th>
+                          <th>Cause Code (Ursache)</th>
+                          <th style={{ width: '120px' }}>Cost ($)</th>
+                          <th style={{ width: '40px' }}></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>
+                              No catalog profile defect items entered yet.
+                            </td>
+                          </tr>
+                        ) : (
+                          items.map((it) => (
+                            <tr key={it.itemNo}>
+                              <td><span className="mono-chip">{it.itemNo}</span></td>
+                              <td><strong>{it.objectPartText}</strong> <span style={{ fontSize: '0.7rem', color: '#64748b' }}>({it.objectPartCode})</span></td>
+                              <td><span style={{ color: '#dc2626', fontWeight: 600 }}>{it.damageText}</span></td>
+                              <td>{it.causeText}</td>
+                              <td><strong style={{ color: '#16a34a' }}>{formatCurrency(it.cost)}</strong></td>
+                              <td>
+                                <button 
+                                  type="button" 
+                                  onClick={() => setItems(items.filter((x) => x.itemNo !== it.itemNo))}
+                                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#dc2626' }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+
+                    {/* Add Item Form */}
+                    <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '3px', padding: '14px 16px' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '10px' }}>
+                        + Add Defect Item & Enter Cost:
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Object Part (B):</label>
+                          <select 
+                            value={tempItemPart} 
+                            onChange={(e) => setTempItemPart(e.target.value)}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                          >
+                            <option value="">-- Choose Part --</option>
+                            {currentProfile.objectParts.map((p) => (
+                              <option key={p.code} value={p.code}>{p.code}: {p.text}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Damage Code (C):</label>
+                          <select 
+                            value={tempItemDamage} 
+                            onChange={(e) => setTempItemDamage(e.target.value)}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                          >
+                            <option value="">-- Choose Damage --</option>
+                            {currentProfile.damageCodes.map((d) => (
+                              <option key={d.code} value={d.code}>{d.code}: {d.text}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Cause Code (5):</label>
+                          <select 
+                            value={tempItemCause} 
+                            onChange={(e) => setTempItemCause(e.target.value)}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                          >
+                            <option value="">-- Choose Cause --</option>
+                            {currentProfile.causeCodes.map((c) => (
+                              <option key={c.code} value={c.code}>{c.code}: {c.text}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#16a34a', fontWeight: 700, display: 'block' }}>Item Cost ($):</label>
+                          <input 
+                            type="number"
+                            min="0"
                             placeholder="e.g. 640.00"
                             value={tempItemCost}
                             onChange={(e) => setTempItemCost(e.target.value)}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.82rem', fontWeight: 700 }}
                           />
                         </div>
                       </div>
 
-                      <div className="form-group">
-                        <label className="form-label"><span>Technician Defect Notes</span></label>
-                        <input 
-                          type="text"
-                          className="form-input"
-                          placeholder="e.g. Seal face cracked from abrasive slurry particles"
-                          value={tempItemNotes}
-                          onChange={(e) => setTempItemNotes(e.target.value)}
-                        />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={handleAddItem}>
+                          <Plus size={13} />
+                          <span>Add Item & Calculate Cost</span>
+                        </button>
                       </div>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                      <button 
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={handleAddItem}
-                        style={{ fontWeight: 600 }}
-                      >
-                        <PlusCircle size={14} />
-                        <span>Add Item to Notification</span>
-                      </button>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* STEP 3: Notification Tasks */}
-              {wizardStep === 3 && (
+              {/* TAB 5: TASKS (Action tasks requirement!) */}
+              {activeSapTab === 'tasks' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-                  <div style={{
-                    background: 'var(--warning-subtle)',
-                    border: '1px solid rgba(245, 158, 11, 0.25)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '12px 16px',
-                    fontSize: '0.82rem',
-                    color: 'var(--text-secondary)'
-                  }}>
-                    <strong>Step 3: Notification Action Tasks (Catalog 2 - Maßnahmen)</strong> — Add the required technical tasks, safety mitigations (LOTO), and inspections that must be executed to resolve the notification.
-                  </div>
+                  <div style={{ border: '1px solid #cbd5e1', borderRadius: '3px', padding: '16px 20px', background: '#ffffff' }}>
+                    <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '14px' }}>
+                      Notification Action Tasks (Catalog 2 - Maßnahmen)
+                    </h4>
 
-                  {/* Tasks List */}
-                  <div className="panel-card" style={{ margin: 0, boxShadow: 'none' }}>
-                    <div className="panel-header" style={{ padding: '12px 18px', background: '#f8fafc' }}>
-                      <span style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--text-main)' }}>
-                        Planned Notification Action Tasks ({tasks.length})
-                      </span>
-                    </div>
-
-                    <div className="data-table-container">
-                      <table className="data-table">
-                        <thead>
+                    <table className="data-table" style={{ width: '100%', border: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                      <thead>
+                        <tr style={{ background: '#f8fafc' }}>
+                          <th style={{ width: '50px' }}>Task</th>
+                          <th>Task Description</th>
+                          <th>Assigned Technician</th>
+                          <th>Target Finish</th>
+                          <th style={{ width: '110px' }}>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tasks.length === 0 ? (
                           <tr>
-                            <th style={{ width: '60px' }}>Task</th>
-                            <th>Description</th>
-                            <th>Assigned Technician</th>
-                            <th style={{ width: '140px' }}>Target Finish</th>
-                            <th style={{ width: '50px' }}></th>
+                            <td colSpan={5} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>
+                              No tasks planned for this notification.
+                            </td>
                           </tr>
-                        </thead>
-                        <tbody>
-                          {tasks.length === 0 ? (
-                            <tr>
-                              <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', fontSize: '0.82rem' }}>
-                                No tasks added yet. Add tasks below to instruct the maintenance crew.
+                        ) : (
+                          tasks.map((tsk) => (
+                            <tr key={tsk.taskNo}>
+                              <td><span className="mono-chip">{tsk.taskNo}</span></td>
+                              <td><strong>{tsk.description}</strong></td>
+                              <td>{tsk.assignedTo}</td>
+                              <td>{formatDate(tsk.plannedFinish)}</td>
+                              <td>
+                                <button 
+                                  type="button"
+                                  onClick={() => {
+                                    setTasks(tasks.map((t) => t.taskNo === tsk.taskNo ? {
+                                      ...t,
+                                      status: t.status === 'Completed' ? 'Pending' : 'Completed'
+                                    } : t));
+                                  }}
+                                  style={{
+                                    border: 'none',
+                                    padding: '3px 8px',
+                                    borderRadius: '2px',
+                                    fontSize: '0.74rem',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    background: tsk.status === 'Completed' ? '#dcfce7' : '#fef3c7',
+                                    color: tsk.status === 'Completed' ? '#166534' : '#92400e'
+                                  }}
+                                >
+                                  {tsk.status === 'Completed' ? '✓ Completed' : tsk.status || 'Pending'}
+                                </button>
                               </td>
                             </tr>
-                          ) : (
-                            tasks.map((tsk) => (
-                              <tr key={tsk.taskNo}>
-                                <td><span className="mono-chip">{tsk.taskNo}</span></td>
-                                <td>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.82rem' }}>{tsk.description}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Code: {tsk.taskCode}</div>
-                                </td>
-                                <td><span style={{ fontSize: '0.82rem' }}>{tsk.assignedTo}</span></td>
-                                <td><span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{formatDate(tsk.plannedFinish)}</span></td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button 
-                                    type="button"
-                                    className="btn btn-secondary btn-sm"
-                                    style={{ padding: '4px', color: 'var(--danger)' }}
-                                    onClick={() => handleRemoveTask(tsk.taskNo)}
-                                    title="Remove task"
-                                  >
-                                    <Trash2 size={13} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
 
-                  {/* Add New Task Form */}
-                  <div style={{
-                    background: '#f8fafc',
-                    border: '1px dashed var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                  }}>
-                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                      + Add Action Task
-                    </div>
-
-                    <div className="form-grid-2">
-                      <div className="form-group">
-                        <label className="form-label"><span>Standard Task Template (from Catalog)</span></label>
-                        <select 
-                          className="form-select"
-                          value={tempTaskCode}
-                          onChange={(e) => {
-                            setTempTaskCode(e.target.value);
-                            const t = currentProfile.taskCodes.find((tc) => tc.code === e.target.value);
-                            if (t) setTempTaskDesc(t.text);
-                          }}
-                        >
-                          <option value="">-- Choose Standard Task --</option>
-                          {currentProfile.taskCodes.map((tc) => (
-                            <option key={tc.code} value={tc.code}>{tc.code}: {tc.text}</option>
-                          ))}
-                        </select>
+                    {/* Add Task Form */}
+                    <div style={{ background: '#f8fafc', border: '1px dashed #cbd5e1', borderRadius: '3px', padding: '14px 16px' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e3a8a', marginBottom: '10px' }}>
+                        + Add Action Task:
                       </div>
 
-                      <div className="form-group">
-                        <label className="form-label"><span>Task Description</span></label>
-                        <input 
-                          type="text"
-                          className="form-input"
-                          placeholder="e.g. LOTO lockout, casing wash, and alignment test"
-                          value={tempTaskDesc}
-                          onChange={(e) => setTempTaskDesc(e.target.value)}
-                        />
-                      </div>
-                    </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px' }}>
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Standard Task Template:</label>
+                          <select 
+                            value={tempTaskCode}
+                            onChange={(e) => {
+                              setTempTaskCode(e.target.value);
+                              const found = currentProfile.taskCodes.find((tc) => tc.code === e.target.value);
+                              if (found) setTempTaskDesc(found.text);
+                            }}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', fontSize: '0.8rem' }}
+                          >
+                            <option value="">-- Choose Standard Task --</option>
+                            {currentProfile.taskCodes.map((tc) => (
+                              <option key={tc.code} value={tc.code}>{tc.code}: {tc.text}</option>
+                            ))}
+                          </select>
+                        </div>
 
-                    <div className="form-grid-2">
-                      <div className="form-group">
-                        <label className="form-label"><span>Assigned Technician / Lead</span></label>
-                        <input 
-                          type="text"
-                          className="form-input"
-                          value={tempTaskAssignee}
-                          onChange={(e) => setTempTaskAssignee(e.target.value)}
-                        />
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Task Description:</label>
+                          <input 
+                            type="text" 
+                            value={tempTaskDesc} 
+                            onChange={(e) => setTempTaskDesc(e.target.value)}
+                            placeholder="Task description"
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.82rem' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Assigned Technician:</label>
+                          <input 
+                            type="text" 
+                            value={tempTaskAssignee} 
+                            onChange={(e) => setTempTaskAssignee(e.target.value)}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.82rem' }}
+                          />
+                        </div>
+
+                        <div>
+                          <label style={{ fontSize: '0.74rem', color: '#64748b', display: 'block' }}>Target Finish:</label>
+                          <input 
+                            type="datetime-local" 
+                            value={tempTaskFinish} 
+                            onChange={(e) => setTempTaskFinish(e.target.value)}
+                            style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.82rem' }}
+                          />
+                        </div>
                       </div>
 
-                      <div className="form-group">
-                        <label className="form-label"><span>Target Finish Date & Time</span></label>
-                        <input 
-                          type="datetime-local"
-                          className="form-input"
-                          value={tempTaskFinish}
-                          onChange={(e) => setTempTaskFinish(e.target.value)}
-                        />
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '10px' }}>
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={handleAddTask}>
+                          <Plus size={13} />
+                          <span>Add Task</span>
+                        </button>
                       </div>
-                    </div>
-
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
-                      <button 
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={handleAddTask}
-                        style={{ fontWeight: 600 }}
-                      >
-                        <PlusCircle size={14} />
-                        <span>Add Task to Notification</span>
-                      </button>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* STEP 4: Supervision & Approval */}
-              {wizardStep === 4 && (
+              {/* TAB 6: SUPERVISION / ACTIVITIES (Supervisor sign-off requirement!) */}
+              {activeSapTab === 'supervision' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
                   <div style={{
-                    background: 'var(--primary-subtle)',
-                    border: '1px solid rgba(37, 99, 235, 0.25)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '12px 16px',
-                    fontSize: '0.82rem',
-                    color: 'var(--text-secondary)'
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '3px',
+                    padding: '18px 20px',
+                    background: isSupervised ? '#ecfdf5' : '#fffbeb'
                   }}>
-                    <strong>Step 4: Maintenance Supervision & Disposition</strong> — The maintenance supervisor reviews the defect details, breakdown halt conditions, catalog items, estimated cost, and planned tasks before authorizing execution.
-                  </div>
-
-                  {/* Summary Card for Supervisor */}
-                  <div style={{
-                    background: '#f8fafc',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '18px 22px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                        {title}
-                      </div>
-                      <span className={`badge badge-${getPriorityBadge(priority).color}`}>
-                        {priority} Priority
-                      </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+                      <UserCheck size={20} color={isSupervised ? '#16a34a' : '#d97706'} />
+                      <h4 style={{ fontSize: '0.96rem', fontWeight: 700, color: isSupervised ? '#065f46' : '#92400e' }}>
+                        {isSupervised ? 'Supervision Sign-Off Verified (APRV)' : 'Pending Supervisor Review & Authorization'}
+                      </h4>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '6px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
                       <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Target Equipment</div>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>{equipmentId}</div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--primary)' }}>{functionalLocationId}</div>
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Breakdown Status</div>
-                        {breakdown ? (
-                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--danger)' }}>
-                            🚨 Breakdown Halt
-                            <div style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>Point: {breakdownPoint}</div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--success)' }}>
-                            Operational / Degraded
-                          </div>
-                        )}
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Catalog Items & Cost</div>
-                        <div style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--success)' }}>
-                          {formatCurrency(totalEstimatedCost)}
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                          {items.length} items logged ({catalogProfileId})
-                        </div>
-                      </div>
-
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Action Tasks</div>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                          {tasks.length} planned tasks
-                        </div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
-                          Reported by: {reportedBy}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Supervisor Sign-Off Form */}
-                  <div style={{
-                    background: '#ffffff',
-                    border: '1px solid var(--border-card)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '18px 22px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '14px'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <UserCheck size={18} color="var(--primary)" />
-                      <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                        Supervisor Authorization Sign-Off
-                      </span>
-                    </div>
-
-                    <div className="form-grid-2">
-                      <div className="form-group">
-                        <label className="form-label"><span>Supervisor Name / Designation</span></label>
+                        <label style={{ fontSize: '0.78rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Supervisor Name:</label>
                         <input 
-                          type="text"
-                          className="form-input"
-                          value={supervisorName}
+                          type="text" 
+                          value={supervisorName} 
                           onChange={(e) => setSupervisorName(e.target.value)}
+                          style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.84rem', fontWeight: 600 }}
                         />
                       </div>
 
-                      <div className="form-group">
-                        <label className="form-label"><span>Supervision Decision</span></label>
+                      <div>
+                        <label style={{ fontSize: '0.78rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Decision:</label>
                         <select 
-                          className="form-select"
-                          value={supervisorDecision}
+                          value={supervisorDecision} 
                           onChange={(e) => setSupervisorDecision(e.target.value)}
+                          style={{ width: '100%', height: '28px', border: '1px solid #cbd5e1', padding: '2px 8px', fontSize: '0.82rem' }}
                         >
                           <option value="Approved & Released for Work Order">Approved & Released for Work Order (IW31)</option>
                           <option value="Approved for Direct Technical Execution">Approved for Direct Technical Execution</option>
-                          <option value="Revision Requested">Revision Requested (More inspection needed)</option>
+                          <option value="Revision Requested">Revision Requested</option>
                         </select>
                       </div>
                     </div>
 
-                    <div className="form-group">
-                      <label className="form-label"><span>Supervisor Remarks & Engineering Instructions</span></label>
+                    <div style={{ marginTop: '12px' }}>
+                      <label style={{ fontSize: '0.78rem', color: '#64748b', display: 'block', marginBottom: '4px' }}>Supervisor Remarks:</label>
                       <textarea 
-                        className="form-textarea"
-                        rows={2}
-                        value={supervisorComments}
+                        rows={3}
+                        value={supervisorComments} 
                         onChange={(e) => setSupervisorComments(e.target.value)}
-                        placeholder="e.g. Failure confirmed. Authorized for immediate overhaul under OpEx budget."
+                        style={{ width: '100%', border: '1px solid #cbd5e1', padding: '6px 10px', fontSize: '0.84rem' }}
                       />
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '14px' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary btn-sm"
+                        onClick={handleSupervisorApproval}
+                        style={{ fontWeight: 700 }}
+                      >
+                        <CheckCircle size={14} />
+                        <span>Sign & Approve Notification</span>
+                      </button>
+
+                      <button 
+                        type="button" 
+                        className="btn btn-primary btn-sm"
+                        onClick={handleConvertToWorkOrder}
+                        style={{ fontWeight: 700 }}
+                      >
+                        <Wrench size={14} />
+                        <span>Convert to Work Order (IW31)</span>
+                      </button>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Modal Footer Controls */}
-            <div className="modal-footer" style={{ justifyContent: 'space-between' }}>
+            {/* RIGHT SIDEBAR: Authentic SAP Action Box (Matches Screenshot #2!) */}
+            <div style={{
+              width: '240px',
+              borderLeft: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              padding: '14px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '14px'
+            }}>
               <div>
-                {wizardStep > 1 && (
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setWizardStep(wizardStep - 1)}
-                  >
-                    <ArrowLeft size={14} />
-                    <span>Back</span>
-                  </button>
-                )}
+                <span style={{ fontSize: '0.8rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: '#1e3a8a' }}>
+                  Action box
+                </span>
+                <div style={{ width: '100%', height: '1px', background: '#cbd5e1', marginTop: '6px' }} />
               </div>
 
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
+              {/* Action Box Links matching screenshot #2 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '0.8rem' }}>
+                <button
+                  type="button"
+                  onClick={handleConvertToWorkOrder}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#2563eb',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left',
+                    fontWeight: 600
+                  }}
+                  title="Generate Work Order (IW31) from this notification"
                 >
-                  Cancel
+                  <Wrench size={14} color="#2563eb" />
+                  <span>Convert to Order (IW31)</span>
                 </button>
 
-                {wizardStep < 4 ? (
-                  <>
-                    <button 
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => handleFinishIntake(false, false)}
-                      title="Save as Outstanding Notification (OSNO) without completing all steps"
-                    >
-                      Save Draft
-                    </button>
+                <button
+                  type="button"
+                  onClick={handlePutInProcess}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#1e40af',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <Send size={14} color="#3b82f6" />
+                  <span>Put in process (NOPR)</span>
+                </button>
 
-                    <button 
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => {
-                        if (wizardStep === 1 && !title.trim()) {
-                          alert('Please enter a malfunction title.');
-                          return;
-                        }
-                        setWizardStep(wizardStep + 1);
-                      }}
-                    >
-                      <span>Proceed to {wizardStep === 1 ? 'Catalog Profile (Step 2)' : wizardStep === 2 ? 'Tasks (Step 3)' : 'Supervision (Step 4)'}</span>
-                      <ArrowRight size={14} />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button 
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={() => handleFinishIntake(true, false)}
-                      style={{ fontWeight: 700 }}
-                    >
-                      <CheckCircle size={15} />
-                      <span>Submit Supervised Notification (APRV)</span>
-                    </button>
+                <button
+                  type="button"
+                  onClick={handleCompleteNotification}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#065f46',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <CheckCircle2 size={14} color="#16a34a" />
+                  <span>Complete (NOCO)</span>
+                </button>
 
-                    <button 
-                      type="button"
-                      className="btn btn-primary"
-                      onClick={() => handleFinishIntake(true, true)}
-                      style={{ fontWeight: 700 }}
-                    >
-                      <Wrench size={15} />
-                      <span>Approve & Convert to Work Order (IW31)</span>
-                    </button>
-                  </>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setActiveSapTab('supervision')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#92400e',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <UserCheck size={14} color="#d97706" />
+                  <span>Supervisor Sign-Off</span>
+                </button>
+
+                <div style={{ width: '100%', height: '1px', background: '#e2e8f0', margin: '4px 0' }} />
+
+                <button
+                  type="button"
+                  onClick={() => showNotice('Solution Database checked. 4 related Sulzer seal repair manuals found.')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <FileText size={14} color="#64748b" />
+                  <span>Solution Database</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => showNotice('Internal engineering technical note logged.')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <Edit3 size={14} color="#64748b" />
+                  <span>Create Internal Note</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => showNotice('Telephone log recorded: Control room notified of standby P-101B start.')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <Phone size={14} color="#64748b" />
+                  <span>Log Telephone Call</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => showNotice('Confirmation receipt transmitted to operator dispatch.')}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'none',
+                    border: 'none',
+                    color: '#334155',
+                    cursor: 'pointer',
+                    padding: '4px 0',
+                    textAlign: 'left'
+                  }}
+                >
+                  <ClipboardList size={14} color="#64748b" />
+                  <span>Send Confirmation of Receipt</span>
+                </button>
+              </div>
+
+              {/* Status & Cost Stamp in Action Box */}
+              <div style={{
+                marginTop: 'auto',
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '3px',
+                padding: '10px 12px',
+                fontSize: '0.74rem'
+              }}>
+                <div style={{ color: '#64748b' }}>Estimated Defect Cost:</div>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#16a34a', margin: '2px 0' }}>
+                  {formatCurrency(totalEstimatedCost)}
+                </div>
+                <div style={{ color: '#64748b' }}>
+                  {items.length} items • {tasks.length} tasks
+                </div>
               </div>
             </div>
           </div>
         </div>
-      )}
+      ) : (
+        /* =====================================================================
+           SECONDARY VIEW: Notification Grid List (IW28)
+           ===================================================================== */
+        <div className="panel-card" style={{ boxShadow: 'none' }}>
+          <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div className="panel-title-wrap">
+              <span className="panel-title">Notifications Overview List (IW28)</span>
+              <span className="mono-chip">{filteredNotifs.length} records</span>
+            </div>
 
-      {/* =====================================================================
-          MODAL 2: Notification Workbench & Detail Modal (IW22 / Display IW23)
-          Tabs: Overview & Breakdown | Catalog & Costs | Tasks | Supervision
-          ===================================================================== */}
-      {selectedNotif && (
-        <div className="modal-overlay" onClick={() => setSelectedNotif(null)}>
-          <div 
-            className="modal-box" 
-            style={{ maxWidth: '860px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="modal-header">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <div style={{
-                  width: '40px',
-                  height: '40px',
-                  borderRadius: 'var(--radius-md)',
-                  background: 'var(--primary-subtle)',
-                  color: 'var(--primary)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <BellRing size={22} />
-                </div>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                      Notification Workbench: {selectedNotif.notificationNo}
-                    </h3>
-                    <span className={`mono-chip mono-chip-${getNotificationStatusBadge(selectedNotif.status).color}`}>
-                      {getNotificationStatusBadge(selectedNotif.status).label}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    {selectedNotif.equipmentId} • {selectedNotif.functionalLocationId}
-                  </div>
-                </div>
-              </div>
-
-              <button className="btn btn-secondary btn-sm" onClick={() => setSelectedNotif(null)}>
-                <X size={16} />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input 
+                type="text" 
+                placeholder="Search notification no, equipment..." 
+                className="search-input"
+                style={{ width: '220px' }}
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <button 
+                className="btn btn-primary btn-sm"
+                onClick={() => {
+                  enterCreateMode();
+                  setViewMode('sap_gui');
+                }}
+              >
+                <Plus size={13} />
+                <span>Create (IW21)</span>
               </button>
             </div>
+          </div>
 
-            {/* Tabs Nav */}
-            <div style={{ borderBottom: '1px solid var(--border-subtle)', background: '#f8fafc', padding: '0 24px' }}>
-              <div className="tabs-nav" style={{ margin: 0 }}>
-                <button 
-                  className={`tab-btn ${workbenchTab === 'overview' ? 'active' : ''}`}
-                  onClick={() => setWorkbenchTab('overview')}
-                >
-                  <FileText size={14} />
-                  <span>Overview & Breakdown</span>
-                </button>
-
-                <button 
-                  className={`tab-btn ${workbenchTab === 'catalog' ? 'active' : ''}`}
-                  onClick={() => setWorkbenchTab('catalog')}
-                >
-                  <DollarSign size={14} />
-                  <span>Catalog & Costs ({(selectedNotif.items || []).length})</span>
-                </button>
-
-                <button 
-                  className={`tab-btn ${workbenchTab === 'tasks' ? 'active' : ''}`}
-                  onClick={() => setWorkbenchTab('tasks')}
-                >
-                  <ClipboardList size={14} />
-                  <span>Tasks ({(selectedNotif.tasks || []).length})</span>
-                </button>
-
-                <button 
-                  className={`tab-btn ${workbenchTab === 'supervision' ? 'active' : ''}`}
-                  onClick={() => setWorkbenchTab('supervision')}
-                >
-                  <ShieldCheck size={14} />
-                  <span>Supervision & Approval</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body */}
-            <div className="modal-body" style={{ maxHeight: '65vh' }}>
-              {/* TAB 1: Overview & Breakdown */}
-              {workbenchTab === 'overview' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div style={{
-                    background: selectedNotif.breakdown ? 'var(--danger-subtle)' : '#f8fafc',
-                    border: `1px solid ${selectedNotif.breakdown ? 'rgba(239, 68, 68, 0.3)' : 'var(--border-subtle)'}`,
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '12px'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Breakdown Status</div>
-                      <div style={{ fontSize: '1rem', fontWeight: 800, color: selectedNotif.breakdown ? 'var(--danger)' : 'var(--success)' }}>
-                        {selectedNotif.breakdown ? '🚨 Breakdown Halt Active' : '✅ Operational Maintenance'}
-                      </div>
-                      {selectedNotif.breakdownPoint && (
-                        <div style={{ fontSize: '0.82rem', color: 'var(--text-main)', marginTop: '4px', fontWeight: 600 }}>
-                          Failure Point: {selectedNotif.breakdownPoint}
-                        </div>
-                      )}
-                    </div>
-
-                    {selectedNotif.breakdownStart && (
-                      <div>
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Breakdown Start Time</div>
-                        <div style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                          {formatDate(selectedNotif.breakdownStart)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div>
-                    <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)', marginBottom: '6px' }}>
-                      {selectedNotif.title}
-                    </h4>
-                    <p style={{ fontSize: '0.84rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
-                      {selectedNotif.description}
-                    </p>
-                  </div>
-
-                  <div className="grid-cards-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-                    <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Equipment & Asset</div>
-                      <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
-                        {selectedNotif.equipmentId}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--primary)', marginTop: '2px' }}>
-                        {selectedNotif.functionalLocationId}
-                      </div>
-                    </div>
-
-                    <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Reported By & Date</div>
-                      <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '2px' }}>
-                        {selectedNotif.reportedBy}
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                        {selectedNotif.reportedDate}
-                      </div>
-                    </div>
-
-                    <div style={{ padding: '12px 16px', background: '#f8fafc', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Priority & Order Link</div>
-                      <div style={{ marginTop: '2px' }}>
-                        <span className={`badge badge-${getPriorityBadge(selectedNotif.priority).color}`}>
-                          {selectedNotif.priority}
+          <div className="data-table-container">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '130px' }}>Notification No</th>
+                  <th style={{ width: '130px' }}>Breakdown Point</th>
+                  <th>Malfunction Description</th>
+                  <th>Equipment & FL</th>
+                  <th style={{ width: '110px' }}>Cost</th>
+                  <th style={{ width: '90px' }}>Priority</th>
+                  <th style={{ width: '100px' }}>Status</th>
+                  <th style={{ width: '150px', textAlign: 'right' }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredNotifs.map((n) => (
+                  <tr 
+                    key={n.notificationNo}
+                    onClick={() => {
+                      setSelectedNotifId(n.notificationNo);
+                      setViewMode('sap_gui');
+                    }}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <td><span className="mono-chip" style={{ fontWeight: 700, color: '#2563eb' }}>{n.notificationNo}</span></td>
+                    <td>
+                      {n.breakdown ? (
+                        <span className="badge badge-urgent" style={{ fontSize: '0.66rem' }}>
+                          🚨 {n.breakdownPoint?.substring(0, 20) || 'Breakdown'}
                         </span>
-                      </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                        {selectedNotif.orderId ? `Order: ${selectedNotif.orderId}` : 'No work order assigned yet'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 2: Catalog Profile & Costs */}
-              {workbenchTab === 'catalog' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                        Catalog Profile: {selectedNotif.catalogProfileId || 'Standard Profile'}
-                      </span>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                        Item defect codification (Object Part, Damage Code, Cause Code, Estimated Cost)
-                      </div>
-                    </div>
-
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Total Estimated Defect Cost</div>
-                      <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--success)' }}>
-                        {formatCurrency(selectedNotif.totalEstimatedCost || (selectedNotif.items || []).reduce((acc, i) => acc + (Number(i.cost) || 0), 0))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Items Table */}
-                  <div className="panel-card" style={{ margin: 0, boxShadow: 'none' }}>
-                    <div className="data-table-container">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '60px' }}>Item</th>
-                            <th>Object Part</th>
-                            <th>Damage / Defect</th>
-                            <th>Cause Code</th>
-                            <th style={{ width: '110px' }}>Cost</th>
-                            <th style={{ width: '40px' }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(!selectedNotif.items || selectedNotif.items.length === 0) ? (
-                            <tr>
-                              <td colSpan={6} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                                No catalog profile items added to this notification.
-                              </td>
-                            </tr>
-                          ) : (
-                            selectedNotif.items.map((it) => (
-                              <tr key={it.itemNo}>
-                                <td><span className="mono-chip">{it.itemNo}</span></td>
-                                <td>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.82rem' }}>{it.objectPartText}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{it.objectPartCode}</div>
-                                </td>
-                                <td>
-                                  <div style={{ color: 'var(--danger)', fontSize: '0.82rem', fontWeight: 500 }}>{it.damageText}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{it.damageCode}</div>
-                                </td>
-                                <td>
-                                  <div style={{ fontSize: '0.82rem' }}>{it.causeText}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{it.causeCode}</div>
-                                </td>
-                                <td>
-                                  <span style={{ fontWeight: 700, color: 'var(--success)', fontSize: '0.86rem' }}>
-                                    {formatCurrency(it.cost)}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button 
-                                    className="btn btn-secondary btn-sm"
-                                    style={{ padding: '4px', color: 'var(--danger)' }}
-                                    onClick={() => handleWbRemoveItem(it.itemNo)}
-                                    title="Delete item"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Add New Item Form inside Workbench */}
-                  <div style={{
-                    background: '#f8fafc',
-                    border: '1px dashed var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                  }}>
-                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                      + Enter Additional Catalog Profile Item & Cost
-                    </span>
-
-                    {(() => {
-                      const prof = CATALOG_PROFILES.find((p) => p.id === selectedNotif.catalogProfileId) || CATALOG_PROFILES[0];
-                      return (
-                        <>
-                          <div className="form-grid-3">
-                            <div className="form-group">
-                              <label className="form-label"><span>Object Part</span></label>
-                              <select 
-                                className="form-select"
-                                value={wbItemPart}
-                                onChange={(e) => setWbItemPart(e.target.value)}
-                              >
-                                <option value="">-- Choose Part --</option>
-                                {prof.objectParts.map((p) => (
-                                  <option key={p.code} value={p.code}>{p.code}: {p.text}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="form-group">
-                              <label className="form-label"><span>Damage Code</span></label>
-                              <select 
-                                className="form-select"
-                                value={wbItemDamage}
-                                onChange={(e) => setWbItemDamage(e.target.value)}
-                              >
-                                <option value="">-- Choose Damage --</option>
-                                {prof.damageCodes.map((d) => (
-                                  <option key={d.code} value={d.code}>{d.code}: {d.text}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="form-group">
-                              <label className="form-label"><span>Cause Code</span></label>
-                              <select 
-                                className="form-select"
-                                value={wbItemCause}
-                                onChange={(e) => setWbItemCause(e.target.value)}
-                              >
-                                <option value="">-- Choose Cause --</option>
-                                {prof.causeCodes.map((c) => (
-                                  <option key={c.code} value={c.code}>{c.code}: {c.text}</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-
-                          <div className="form-grid-2">
-                            <div className="form-group">
-                              <label className="form-label">
-                                <span style={{ color: 'var(--success)', fontWeight: 700 }}>Cost ($)</span>
-                              </label>
-                              <input 
-                                type="number"
-                                className="form-input"
-                                placeholder="e.g. 450.00"
-                                value={wbItemCost}
-                                onChange={(e) => setWbItemCost(e.target.value)}
-                              />
-                            </div>
-
-                            <div className="form-group">
-                              <label className="form-label"><span>Item Notes</span></label>
-                              <input 
-                                type="text"
-                                className="form-input"
-                                placeholder="Failure remarks"
-                                value={wbItemNotes}
-                                onChange={(e) => setWbItemNotes(e.target.value)}
-                              />
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <button className="btn btn-secondary btn-sm" onClick={handleWbAddItem}>
-                              <PlusCircle size={14} />
-                              <span>Add Item & Update Cost</span>
-                            </button>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 3: Tasks */}
-              {workbenchTab === 'tasks' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <span style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                        Action Tasks & Mitigation Steps
-                      </span>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                        Click a task status badge to toggle between Pending, In Progress, and Completed
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="panel-card" style={{ margin: 0, boxShadow: 'none' }}>
-                    <div className="data-table-container">
-                      <table className="data-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '60px' }}>Task</th>
-                            <th>Description</th>
-                            <th>Assigned Lead</th>
-                            <th style={{ width: '130px' }}>Target Finish</th>
-                            <th style={{ width: '110px' }}>Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {(!selectedNotif.tasks || selectedNotif.tasks.length === 0) ? (
-                            <tr>
-                              <td colSpan={5} style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
-                                No tasks assigned to this notification yet.
-                              </td>
-                            </tr>
-                          ) : (
-                            selectedNotif.tasks.map((tsk) => (
-                              <tr key={tsk.taskNo}>
-                                <td><span className="mono-chip">{tsk.taskNo}</span></td>
-                                <td>
-                                  <div style={{ fontWeight: 600, color: 'var(--text-main)', fontSize: '0.82rem' }}>{tsk.description}</div>
-                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Code: {tsk.taskCode}</div>
-                                </td>
-                                <td><span style={{ fontSize: '0.82rem' }}>{tsk.assignedTo}</span></td>
-                                <td><span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>{formatDate(tsk.plannedFinish)}</span></td>
-                                <td>
-                                  <button 
-                                    className={`btn btn-sm ${tsk.status === 'Completed' ? 'btn-primary' : 'btn-secondary'}`}
-                                    style={{
-                                      fontSize: '0.72rem',
-                                      padding: '4px 10px',
-                                      background: tsk.status === 'Completed' ? 'var(--success)' : undefined,
-                                      color: tsk.status === 'Completed' ? '#ffffff' : undefined
-                                    }}
-                                    onClick={() => handleWbToggleTaskStatus(tsk.taskNo)}
-                                    title="Click to toggle status"
-                                  >
-                                    {tsk.status === 'Completed' ? '✓ Completed' : tsk.status || 'Pending'}
-                                  </button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Add New Task Form inside Workbench */}
-                  <div style={{
-                    background: '#f8fafc',
-                    border: '1px dashed var(--border-subtle)',
-                    borderRadius: 'var(--radius-md)',
-                    padding: '16px 20px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '12px'
-                  }}>
-                    <span style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--text-main)' }}>
-                      + Add New Task
-                    </span>
-
-                    {(() => {
-                      const prof = CATALOG_PROFILES.find((p) => p.id === selectedNotif.catalogProfileId) || CATALOG_PROFILES[0];
-                      return (
-                        <>
-                          <div className="form-grid-2">
-                            <div className="form-group">
-                              <label className="form-label"><span>Standard Task Template</span></label>
-                              <select 
-                                className="form-select"
-                                value={wbTaskCode}
-                                onChange={(e) => {
-                                  setWbTaskCode(e.target.value);
-                                  const t = prof.taskCodes.find((tc) => tc.code === e.target.value);
-                                  if (t) setWbTaskDesc(t.text);
-                                }}
-                              >
-                                <option value="">-- Choose Standard Task --</option>
-                                {prof.taskCodes.map((tc) => (
-                                  <option key={tc.code} value={tc.code}>{tc.code}: {tc.text}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            <div className="form-group">
-                              <label className="form-label"><span>Task Description</span></label>
-                              <input 
-                                type="text"
-                                className="form-input"
-                                placeholder="Task description"
-                                value={wbTaskDesc}
-                                onChange={(e) => setWbTaskDesc(e.target.value)}
-                              />
-                            </div>
-                          </div>
-
-                          <div className="form-grid-2">
-                            <div className="form-group">
-                              <label className="form-label"><span>Assigned Technician</span></label>
-                              <input 
-                                type="text"
-                                className="form-input"
-                                value={wbTaskAssignee}
-                                onChange={(e) => setWbTaskAssignee(e.target.value)}
-                              />
-                            </div>
-
-                            <div className="form-group">
-                              <label className="form-label"><span>Target Finish Date</span></label>
-                              <input 
-                                type="datetime-local"
-                                className="form-input"
-                                value={wbTaskFinish}
-                                onChange={(e) => setWbTaskFinish(e.target.value)}
-                              />
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                            <button className="btn btn-secondary btn-sm" onClick={handleWbAddTask}>
-                              <PlusCircle size={14} />
-                              <span>Add Task</span>
-                            </button>
-                          </div>
-                        </>
-                      );
-                    })()}
-                  </div>
-                </div>
-              )}
-
-              {/* TAB 4: Supervision & Approval */}
-              {workbenchTab === 'supervision' && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  {selectedNotif.supervisorSignOff?.isSupervised ? (
-                    <div style={{
-                      background: 'var(--success-subtle)',
-                      border: '1px solid rgba(16, 185, 129, 0.35)',
-                      borderRadius: 'var(--radius-lg)',
-                      padding: '22px 26px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '12px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <div style={{
-                          width: '32px',
-                          height: '32px',
-                          borderRadius: 'var(--radius-full)',
-                          background: 'var(--success)',
-                          color: '#ffffff',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center'
-                        }}>
-                          <CheckCircle2 size={18} />
-                        </div>
-                        <div>
-                          <div style={{ fontSize: '0.96rem', fontWeight: 800, color: '#065f46' }}>
-                            Supervised & Approved
-                          </div>
-                          <div style={{ fontSize: '0.74rem', color: '#047857' }}>
-                            Signed by {selectedNotif.supervisorSignOff.supervisorName} on {selectedNotif.supervisorSignOff.signedAt}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ fontSize: '0.84rem', color: 'var(--text-main)', marginTop: '4px' }}>
-                        <strong>Decision:</strong> {selectedNotif.supervisorSignOff.decision}
-                      </div>
-
-                      {selectedNotif.supervisorSignOff.comments && (
-                        <div style={{
-                          background: 'rgba(255, 255, 255, 0.8)',
-                          borderRadius: 'var(--radius-sm)',
-                          padding: '10px 14px',
-                          fontSize: '0.82rem',
-                          color: 'var(--text-secondary)',
-                          fontStyle: 'italic'
-                        }}>
-                          "{selectedNotif.supervisorSignOff.comments}"
-                        </div>
+                      ) : (
+                        <span className="badge badge-low" style={{ fontSize: '0.66rem' }}>Operational</span>
                       )}
-                    </div>
-                  ) : (
-                    <div style={{
-                      background: 'var(--warning-subtle)',
-                      border: '1px solid rgba(245, 158, 11, 0.35)',
-                      borderRadius: 'var(--radius-lg)',
-                      padding: '20px 24px',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      gap: '14px'
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <UserCheck size={20} color="var(--warning)" />
-                        <div>
-                          <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#92400e' }}>
-                            Pending Supervisor Review
-                          </div>
-                          <div style={{ fontSize: '0.75rem', color: '#b45309' }}>
-                            Review technician breakdown details, catalog defect items, estimated costs, and approve.
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="form-grid-2">
-                        <div className="form-group">
-                          <label className="form-label"><span>Supervisor Name</span></label>
-                          <input 
-                            type="text"
-                            className="form-input"
-                            value={wbSupvName}
-                            onChange={(e) => setWbSupvName(e.target.value)}
-                          />
-                        </div>
-
-                        <div className="form-group">
-                          <label className="form-label"><span>Decision</span></label>
-                          <select 
-                            className="form-select"
-                            value={wbSupvDecision}
-                            onChange={(e) => setWbSupvDecision(e.target.value)}
-                          >
-                            <option value="Approved & Released for Work Order">Approved & Released for Work Order (IW31)</option>
-                            <option value="Approved for Direct Technical Execution">Approved for Direct Technical Execution</option>
-                            <option value="Revision Requested">Revision Requested</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="form-group">
-                        <label className="form-label"><span>Supervisor Engineering Remarks</span></label>
-                        <textarea 
-                          className="form-textarea"
-                          rows={2}
-                          value={wbSupvComments}
-                          onChange={(e) => setWbSupvComments(e.target.value)}
-                          placeholder="e.g. Failure verified. Authorized for Work Order conversion."
-                        />
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
-                        <button className="btn btn-primary" onClick={handleWbSupervisorSignOff}>
-                          <CheckCircle size={15} />
-                          <span>Sign & Approve Notification</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Conversion to Order (IW31) Section */}
-                  <div style={{
-                    background: '#ffffff',
-                    border: '1px solid var(--border-card)',
-                    borderRadius: 'var(--radius-lg)',
-                    padding: '20px 24px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: '14px'
-                  }}>
-                    <div>
-                      <div style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--text-main)' }}>
-                        Order Conversion Pipeline (IW31)
-                      </div>
-                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-                        Converts this approved notification, equipment, catalog items, and tasks into an active SAP Work Order.
-                      </div>
-                    </div>
-
-                    {selectedNotif.orderId ? (
-                      <span className="mono-chip mono-chip-emerald" style={{ fontWeight: 700, padding: '8px 14px' }}>
-                        Order Assigned: {selectedNotif.orderId}
-                      </span>
-                    ) : (
+                    </td>
+                    <td><strong>{n.title}</strong></td>
+                    <td>{n.equipmentId} • {n.functionalLocationId}</td>
+                    <td><strong style={{ color: '#16a34a' }}>{formatCurrency(n.totalEstimatedCost || 0)}</strong></td>
+                    <td><span className={`badge badge-${getPriorityBadge(n.priority).color}`}>{n.priority}</span></td>
+                    <td><span className={`mono-chip mono-chip-${getNotificationStatusBadge(n.status).color}`}>{n.status}</span></td>
+                    <td style={{ textAlign: 'right' }}>
                       <button 
-                        className="btn btn-primary"
-                        onClick={() => {
-                          const notifToConvert = selectedNotif;
-                          setSelectedNotif(null);
-                          if (onConvertNotification) {
-                            onConvertNotification(notifToConvert);
-                          }
+                        className="btn btn-primary btn-sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedNotifId(n.notificationNo);
+                          setViewMode('sap_gui');
                         }}
-                        style={{ fontWeight: 700 }}
                       >
-                        <Wrench size={15} />
-                        <span>Convert to Work Order (IW31)</span>
+                        Open (IW22)
                       </button>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="modal-footer">
-              <button className="btn btn-secondary" onClick={() => setSelectedNotif(null)}>
-                Close
-              </button>
-              {!selectedNotif.orderId && (
-                <button 
-                  className="btn btn-primary"
-                  onClick={() => {
-                    const notifToConvert = selectedNotif;
-                    setSelectedNotif(null);
-                    if (onConvertNotification) {
-                      onConvertNotification(notifToConvert);
-                    }
-                  }}
-                >
-                  <Wrench size={14} />
-                  <span>Convert to Order (IW31)</span>
-                </button>
-              )}
-            </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
