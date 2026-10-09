@@ -112,8 +112,8 @@ export default function Sidebar({ currentView, setView, counts }) {
                     fontWeight: 700,
                     padding: '1px 6px',
                     borderRadius: '10px',
-                    background: isActive ? '#2563eb' : 'rgba(255,255,255,0.08)',
-                    color: '#ffffff'
+                    background: isActive ? '#2563eb' : '#e2e8f0',
+                    color: isActive ? '#ffffff' : '#475569'
                   }}>
                     {item.count}
                   </span>
@@ -127,7 +127,7 @@ export default function Sidebar({ currentView, setView, counts }) {
         <div className="nav-section-title" style={{ marginTop: '16px' }}>Quick Actions</div>
         <button 
           className="nav-item" 
-          style={{ color: '#fb7185', background: 'rgba(239, 68, 68, 0.08)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+          style={{ color: '#dc2626', background: '#fef2f2', borderColor: '#fecaca' }}
           onClick={() => {
             setView('create_order');
           }}

@@ -119,6 +119,38 @@ export const getStatusBadge = (status) => {
   }
 };
 
+export const getNotificationStatusBadge = (status) => {
+  switch (status) {
+    case 'OSNO':
+      return { code: 'OSNO', label: 'OSNO - Raised / Outstanding', color: 'amber', bg: '#fef3c7', text: '#92400e', border: '#fcd34d' };
+    case 'NOPR':
+      return { code: 'NOPR', label: 'NOPR - In Technical Processing', color: 'blue', bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' };
+    case 'PNDG_SUPV':
+      return { code: 'PNDG_SUPV', label: 'SUBM - Pending Supervision', color: 'purple', bg: '#f3e8ff', text: '#6b21a8', border: '#d8b4fe' };
+    case 'APRV':
+      return { code: 'APRV', label: 'APRV - Supervised & Approved', color: 'emerald', bg: '#dcfce7', text: '#166534', border: '#86efac' };
+    case 'ORD_GEN':
+      return { code: 'ORD_GEN', label: 'ORDR - Order Assigned (IW31)', color: 'teal', bg: '#ccfbf1', text: '#115e59', border: '#5eead4' };
+    case 'NOCO':
+      return { code: 'NOCO', label: 'NOCO - Notification Completed', color: 'slate', bg: '#f1f5f9', text: '#334155', border: '#cbd5e1' };
+    default:
+      return { code: status || 'OSNO', label: status || 'Outstanding', color: 'blue', bg: '#dbeafe', text: '#1e40af', border: '#93c5fd' };
+  }
+};
+
+export const getNotificationTypeInfo = (type) => {
+  switch (type) {
+    case 'M1':
+      return { code: 'M1', label: 'M1 - Corrective Defect', color: '#2563eb' };
+    case 'M2':
+      return { code: 'M2', label: 'M2 - Breakdown Halt', color: '#dc2626' };
+    case 'M3':
+      return { code: 'M3', label: 'M3 - Activity / Inspection', color: '#7c3aed' };
+    default:
+      return { code: type || 'M1', label: `${type || 'M1'} - Maintenance`, color: '#2563eb' };
+  }
+};
+
 export const getOrderTypeInfo = (type) => {
   switch (type) {
     case 'PM01':

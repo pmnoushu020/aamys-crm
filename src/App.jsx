@@ -27,14 +27,11 @@ import {
   saveCloudOrder, 
   fetchCloudNotifications, 
   saveCloudNotification, 
+  updateCloudNotification, 
   resetCloudDatabase 
 } from './utils/apiSync';
 
 export default function App() {
-  // Theme State (default light)
-  const [theme, setTheme] = useState(() => {
-    return localStorage.getItem('aamys_crm_theme') || 'light';
-  });
 
   // Application Data States (Clean slate; full backup saved in backup_data.txt)
   const [orders, setOrders] = useState(() => {
@@ -79,15 +76,11 @@ export default function App() {
   // Toast Banner
   const [toast, setToast] = useState(null);
 
-  // Apply theme to html element
+  // Apply permanent light theme to html element
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('aamys_crm_theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'));
-  };
+    document.documentElement.setAttribute('data-theme', 'light');
+    localStorage.setItem('aamys_crm_theme', 'light');
+  }, []);
 
   // 1. Initial Cloud Sync: Load from MongoDB Atlas on mount
   useEffect(() => {
@@ -380,6 +373,15 @@ export default function App() {
     showToast(`Notification ${newNotif.notificationNo} created and registered.`, 'success');
   };
 
+  // 8. Update Notification (IW22 / Catalog Profile / Tasks / Supervision)
+  const handleUpdateNotification = (updatedNotif) => {
+    setNotifications((prev) =>
+      prev.map((n) => (n.notificationNo === updatedNotif.notificationNo ? updatedNotif : n))
+    );
+    updateCloudNotification(updatedNotif.notificationNo, updatedNotif);
+    showToast(`Notification ${updatedNotif.notificationNo} updated.`, 'success');
+  };
+
   // Restock material
   const handleRestockMaterial = (matNo, qty) => {
     setMaterials((prev) =>
@@ -443,8 +445,6 @@ export default function App() {
           onNewNotificationClick={() => setView('notifications')}
           onResetData={handleResetData}
           urgentBreakdownsCount={urgentBreakdownsCount}
-          theme={theme}
-          onToggleTheme={toggleTheme}
         />
 
         {/* View Routing */}
@@ -494,6 +494,7 @@ export default function App() {
             notifications={notifications}
             onConvertNotification={handleConvertNotification}
             onAddNotification={handleAddNotification}
+            onUpdateNotification={handleUpdateNotification}
           />
         )}
 

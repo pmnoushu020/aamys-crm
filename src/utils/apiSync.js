@@ -63,6 +63,20 @@ export async function saveCloudNotification(notification) {
   }
 }
 
+export async function updateCloudNotification(notificationNo, updateData) {
+  try {
+    const res = await fetch(`${API_BASE}/notifications/${notificationNo}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updateData)
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    return null;
+  }
+}
+
 export async function resetCloudDatabase() {
   try {
     const res = await fetch(`${API_BASE}/reset`, { method: 'POST' });

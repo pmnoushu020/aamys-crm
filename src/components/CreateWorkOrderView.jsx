@@ -127,6 +127,26 @@ export default function CreateWorkOrderView({
       } else if (initialNotification.functionalLocationId) {
         handleFuncLocChange(initialNotification.functionalLocationId);
       }
+      // Inherit tasks from notification if present
+      if (Array.isArray(initialNotification.tasks) && initialNotification.tasks.length > 0) {
+        const mappedOps = initialNotification.tasks.map((task, idx) => ({
+          opNo: String((idx + 1) * 10).padStart(4, '0'),
+          workCenter: 'MECH_01',
+          description: task.description || task.taskCode || 'Maintenance Activity',
+          controlKey: 'PM01',
+          laborHours: 2.5,
+          technicians: 1,
+          vendor: '',
+          prNumber: '',
+          externalCost: 0
+        }));
+        setOperations(mappedOps);
+      }
+      if (initialNotification.breakdownPoint) {
+        setHeaderText((prev) => 
+          `${prev ? prev + '\n' : ''}[Failure Point: ${initialNotification.breakdownPoint}]${initialNotification.totalEstimatedCost ? ` [Estimated Damage Cost: $${initialNotification.totalEstimatedCost}]` : ''}`
+        );
+      }
     }
   }, [initialNotification]);
 

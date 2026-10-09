@@ -1,14 +1,12 @@
 import React from 'react';
-import { PlusCircle, Search, RefreshCw, Bell, AlertTriangle, Sun, Moon } from 'lucide-react';
+import { PlusCircle, Search, RefreshCw, Bell, AlertTriangle } from 'lucide-react';
 
 export default function TopBar({ 
   currentView, 
   onNewOrderClick, 
   onNewNotificationClick, 
   onResetData,
-  urgentBreakdownsCount,
-  theme = 'light',
-  onToggleTheme
+  urgentBreakdownsCount
 }) {
   const getHeaderInfo = () => {
     switch (currentView) {
@@ -62,18 +60,6 @@ export default function TopBar({
       </div>
 
       <div className="top-bar-actions">
-        {onToggleTheme && (
-          <button 
-            className="btn btn-secondary btn-sm"
-            onClick={onToggleTheme}
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            style={{ padding: '7px 11px' }}
-          >
-            {theme === 'dark' ? <Sun size={15} color="#fbbf24" /> : <Moon size={15} color="#475569" />}
-            <span style={{ fontSize: '0.78rem' }}>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
-          </button>
-        )}
-
         <button 
           className="btn btn-secondary btn-sm"
           onClick={onResetData}

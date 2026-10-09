@@ -77,6 +77,7 @@ const notificationSchema = new mongoose.Schema(
   {
     notificationNo: { type: String, required: true, unique: true },
     type: { type: String, default: 'M1' },
+    notificationType: { type: String, default: 'M1' },
     title: { type: String, required: true },
     description: { type: String },
     equipmentId: { type: String },
@@ -85,8 +86,15 @@ const notificationSchema = new mongoose.Schema(
     reportedBy: { type: String },
     reportedDate: { type: String },
     breakdown: { type: Boolean, default: false },
+    breakdownStart: { type: String },
+    breakdownPoint: { type: String },
     breakdownDurationHours: { type: Number, default: 0 },
-    status: { type: String, default: 'Outstanding' },
+    catalogProfileId: { type: String },
+    totalEstimatedCost: { type: Number, default: 0 },
+    items: { type: Array, default: [] },
+    tasks: { type: Array, default: [] },
+    supervisorSignOff: { type: Object, default: {} },
+    status: { type: String, default: 'OSNO' },
     orderId: { type: String }
   },
   { timestamps: true }
